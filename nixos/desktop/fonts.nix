@@ -6,7 +6,7 @@
 
       monaspace
       recursive
-      maple-mono.NL-TTF
+      maple-mono.truetype-autohint
     ];
     fontconfig = {
       enable = true;
