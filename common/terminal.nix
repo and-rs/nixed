@@ -37,7 +37,6 @@ with pkgs;
   unzip
   delta
   p7zip
-  kitty
   yazi
   btop
   wget

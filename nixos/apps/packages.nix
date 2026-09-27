@@ -8,6 +8,7 @@ let
     picocrypt-cli
     showmethekey
     keepassxc
+    localsend
     obsidian
     vesktop
     zathura

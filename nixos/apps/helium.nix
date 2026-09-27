@@ -7,13 +7,13 @@
 }:
 let
   pname = "helium-browser";
-  version = "0.16.6.1";
+  version = "0.18.1.1";
   redditNsfwBlockerId = "amdeloababijiphdimbjbencaafalkbn";
   redditNsfwBlockerVersion = "1.0.2";
 
   src = fetchurl {
     url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-x86_64.AppImage";
-    hash = "sha256-T29e5QpXsFYADvSsNcti2LXqLaCUjB5mLYEnHtpxO/Q=";
+    hash = "sha256-0eG5k9+/7gbp+Q6KKc1Y6HpHUZewT8BIdQYifDOFacs=";
   };
 
   redditNsfwBlocker = fetchurl {

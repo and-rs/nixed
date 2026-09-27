@@ -7,6 +7,8 @@
     ./apps/nixos-utils.nix
     ./apps/packages.nix
 
+    # ./desktop/dev-testing/cosmic.nix
+    # ./desktop/dev-testing/x11.nix
     ./desktop/directories.nix
     ./desktop/environment.nix
     ./desktop/xremap.nix

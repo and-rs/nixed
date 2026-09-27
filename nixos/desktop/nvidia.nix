@@ -10,10 +10,8 @@
   services.supergfxd.enable = false;
   # environment.systemPackages = with pkgs; [ nvtopPackages.nvidia ];
 
-  services.xserver.videoDrivers = [
-    "modesetting"
-    "nvidia"
-  ];
+  # PRIME offload adds the Intel modesetting device itself.
+  services.xserver.videoDrivers = [ "nvidia" ];
 
   hardware.nvidia = {
     open = true;

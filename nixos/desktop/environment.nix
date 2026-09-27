@@ -59,8 +59,6 @@ in
   };
 
   environment.sessionVariables = {
-    XDG_CURRENT_DESKTOP = "niri";
-    XDG_SESSION_TYPE = "wayland";
     LIBVA_DRIVER_NAME = "iHD";
     NIXOS_OZONE_WL = "1";
   };
