@@ -23,14 +23,6 @@
   zramSwap.enable = true;
   zramSwap.memoryPercent = 50;
 
-  systemd.settings.Manager.LogLevel = "debug";
-  services.journald.extraConfig = ''
-    MaxLevelStore=debug
-    MaxLevelSyslog=debug
-    MaxLevelKMsg=debug
-    MaxLevelConsole=debug
-  '';
-
   boot.loader = {
     systemd-boot.enable = false;
     limine = {

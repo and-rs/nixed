@@ -3,6 +3,7 @@ with pkgs;
 [
   inputs.agenix.packages.${stdenv.hostPlatform.system}.default
   bob-nvim
+  kakoune
   chezmoi
 
   yek

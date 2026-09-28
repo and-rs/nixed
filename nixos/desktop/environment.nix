@@ -65,7 +65,6 @@ in
 
   environment.systemPackages = with pkgs; [
     (disableDBus pkgs.nautilus)
-    (disableDBus pkgs.loupe)
 
     (rofi.override { plugins = [ rofi-calc ]; })
     libqalculate
