@@ -70,8 +70,8 @@ in
     libqalculate
 
     xwayland-satellite
+    gpu-screen-recorder
     wl-clipboard
-    wf-recorder
     quickshell
     xwayland
     upower

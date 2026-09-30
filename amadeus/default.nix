@@ -23,7 +23,7 @@ pkgs.symlinkJoin {
 
     pkgs.slurp
     pkgs.ffmpeg
-    pkgs.wf-recorder
+    pkgs.gpu-screen-recorder
     pkgs.mpv
 
     pkgs.awww
