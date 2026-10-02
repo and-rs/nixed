@@ -15,6 +15,10 @@ with pkgs;
   zoxide
   oh-my-posh
 
+  ocamlformat
+  ocamlPackages.lsp
+  ocamlPackages.utop
+
   nushell
   topiary
   carapace
