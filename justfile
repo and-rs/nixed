@@ -17,7 +17,7 @@ nixos-boot:
 
 # --- darwin ---
 
-switch-darwin:
+darwin-switch:
   sudo darwin-rebuild switch --flake .#M1
 
 # --- amadeus ---

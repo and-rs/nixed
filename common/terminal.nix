@@ -6,9 +6,6 @@ with pkgs;
   kakoune
   chezmoi
 
-  yek
-  opencode
-
   fzf
   tmux
   direnv
