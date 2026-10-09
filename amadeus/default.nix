@@ -21,9 +21,9 @@ pkgs.symlinkJoin {
     pkgs.podman
     pkgs.terraform
 
-    pkgs.slurp
-    pkgs.ffmpeg
     pkgs.gpu-screen-recorder
+    pkgs.ffmpeg
+    pkgs.slurp
     pkgs.mpv
 
     pkgs.awww
@@ -31,6 +31,7 @@ pkgs.symlinkJoin {
     pkgs.grim
     pkgs.satty
     pkgs.xremap
+    pkgs.zathura
     pkgs.hypridle
     hostIntegratedHyprlock
     pkgs.playerctl
