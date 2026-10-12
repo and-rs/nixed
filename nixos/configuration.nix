@@ -79,6 +79,7 @@
 
   services.pipewire = {
     enable = true;
+    jack.enable = true;
     alsa.enable = true;
     pulse.enable = true;
     alsa.support32Bit = true;
