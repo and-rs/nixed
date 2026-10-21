@@ -62,4 +62,8 @@ with pkgs;
   zig
   zls
   zig-shell-completions
+
+  clang-tools
+  lldb
+  gdb
 ]
