@@ -43,9 +43,11 @@ pkgs.symlinkJoin {
     pkgs.xdg-desktop-portal-gnome
     pkgs.xdg-desktop-portal-gtk
     pkgs.xdg-desktop-portal
-    pkgs.commit-mono
+
+    # fonts
     pkgs.recursive
     pkgs.monaspace
+    pkgs.commit-mono
     pkgs.maple-mono.truetype-autohint
 
     pkgs.uv
