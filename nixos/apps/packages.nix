@@ -2,7 +2,9 @@
 let
   apps = with pkgs; [
     helium-browser
+    qbittorrent
     firefox
+    eden
 
     prismlauncher
     picocrypt-cli

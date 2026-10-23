@@ -20,6 +20,11 @@
   ];
   programs.nix-ld.enable = true;
 
+  fileSystems."/data" = {
+    device = "/dev/disk/by-label/data";
+    fsType = "ext4";
+  };
+
   zramSwap.enable = true;
   zramSwap.memoryPercent = 50;
 
