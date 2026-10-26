@@ -21,6 +21,7 @@ with pkgs;
 
   go
   gopls
+  gotmplfmt
 
   hurl
   curl
