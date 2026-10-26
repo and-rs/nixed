@@ -53,6 +53,7 @@
         tmux = stable.legacyPackages.${final.stdenv.hostPlatform.system}.tmux;
         yt-dlp = stable.legacyPackages.${final.stdenv.hostPlatform.system}.yt-dlp;
         corepack = stable.legacyPackages.${final.stdenv.hostPlatform.system}.corepack;
+        bob-nvim = final.callPackage ./common/bob.nix { inherit (prev) bob-nvim; };
         nufmt = nufmt.packages.${final.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
           patches = [ ];
           doCheck = false;

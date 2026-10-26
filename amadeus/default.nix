@@ -1,5 +1,7 @@
 { pkgs, inputs }:
 let
+  stablePkgs = inputs.stable.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+
   commonPackages =
     (import ../common/terminal.nix { inherit pkgs inputs; })
     ++ (import ../common/tooling.nix { inherit pkgs; });
@@ -11,8 +13,8 @@ pkgs.symlinkJoin {
   name = "user-tools";
 
   paths = commonPackages ++ [
-    (pkgs.azure-cli.override {
-      withExtensions = [ pkgs.azure-cli-extensions.azure-devops ];
+    (stablePkgs.azure-cli.override {
+      withExtensions = [ stablePkgs.azure-cli-extensions.azure-devops ];
     })
     (pkgs.rofi.override { plugins = [ pkgs.rofi-calc ]; })
 

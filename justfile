@@ -32,7 +32,7 @@ amadeus-install:
 amadeus-upgrade:
   #!/usr/bin/env bash
   set -euo pipefail
-  sudo nix profile upgrade 0 --impure
+  sudo env NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt nix profile upgrade 0 --impure
 # /nix/var/nix/profiles/default/bin/private-fonts-profile-watch-install
 
 # --- font ---
