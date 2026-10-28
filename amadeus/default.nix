@@ -49,6 +49,7 @@ pkgs.symlinkJoin {
     # fonts
     pkgs.recursive
     pkgs.monaspace
+    pkgs.fragment-mono
     pkgs.commit-mono
     pkgs.maple-mono.truetype-autohint
 

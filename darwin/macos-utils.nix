@@ -4,6 +4,7 @@
     packages = with pkgs; [
       nerd-fonts.symbols-only
       monaspace
+      fragment-mono
       maple-mono.truetype-autohint
     ];
   };

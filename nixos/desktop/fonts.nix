@@ -5,6 +5,7 @@
       adwaita-fonts
 
       monaspace
+      fragment-mono
       recursive
       maple-mono.truetype-autohint
     ];
