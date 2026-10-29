@@ -49,7 +49,8 @@ pkgs.symlinkJoin {
     # fonts
     pkgs.recursive
     pkgs.monaspace
-    pkgs.fragment-mono
+    pkgs.kode-mono
+    (pkgs.google-fonts.override { fonts = [ "Spline Sans Mono" ]; })
     pkgs.commit-mono
     pkgs.maple-mono.truetype-autohint
 

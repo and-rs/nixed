@@ -4,7 +4,8 @@
     packages = with pkgs; [
       nerd-fonts.symbols-only
       monaspace
-      fragment-mono
+      kode-mono
+      (google-fonts.override { fonts = [ "Spline Sans Mono" ]; })
       maple-mono.truetype-autohint
     ];
   };
