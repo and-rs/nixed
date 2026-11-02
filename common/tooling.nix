@@ -60,8 +60,8 @@ with pkgs;
   yamlfmt
   yaml-language-server
 
-  zig
   zls
+  anyzig
   zig-shell-completions
 
   clang-tools

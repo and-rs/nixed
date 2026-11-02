@@ -3,6 +3,7 @@
   imports = [
     ./macos-utils.nix
     ./blocklist.nix
+    ./apps/helium.nix
   ];
 
   programs.direnv = {
