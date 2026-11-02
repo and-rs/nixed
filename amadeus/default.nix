@@ -31,6 +31,7 @@ pkgs.symlinkJoin {
     pkgs.niri
     pkgs.grim
     pkgs.satty
+    pkgs.imv
     pkgs.xremap
     pkgs.zathura
     pkgs.hypridle

@@ -31,7 +31,7 @@ let
     thermald
     pciutils
     nftables
-    geeqie
+    imv
     parted
     sbctl
     satty
