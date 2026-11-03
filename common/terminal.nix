@@ -26,6 +26,7 @@ with pkgs;
   sqldiff
 
   fastfetch
+  worktrunk
   hyperfine
   alacritty
   cbonsai
@@ -34,7 +35,6 @@ with pkgs;
   ripgrep
   slides
   dotbot
-  broot
   tokei
   unzip
   delta
