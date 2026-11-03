@@ -11,6 +11,7 @@ let
     showmethekey
     keepassxc
     localsend
+    oversteer
     obsidian
     vesktop
     zathura
