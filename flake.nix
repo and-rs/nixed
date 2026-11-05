@@ -9,10 +9,6 @@
       url = "github:ryantm/agenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nufmt = {
-      url = "github:nushell/nufmt";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     xremap = {
       url = "github:xremap/nix-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -35,7 +31,6 @@
   outputs =
     {
       self,
-      nufmt,
       xremap,
       agenix,
       stable,
@@ -54,10 +49,6 @@
         yt-dlp = stable.legacyPackages.${final.stdenv.hostPlatform.system}.yt-dlp;
         corepack = stable.legacyPackages.${final.stdenv.hostPlatform.system}.corepack;
         bob-nvim = final.callPackage ./common/bob.nix { inherit (prev) bob-nvim; };
-        nufmt = nufmt.packages.${final.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
-          patches = [ ];
-          doCheck = false;
-        });
       };
 
       packagesOverlayNixos = final: prev: {

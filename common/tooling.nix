@@ -64,6 +64,8 @@ with pkgs;
   anyzig
   zig-shell-completions
 
+  nufmt
+
   clang-tools
   lldb
   gdb

@@ -237,26 +237,6 @@
         "type": "github"
       }
     },
-    "nufmt": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1792595051,
-        "narHash": "sha256-FqGRnFFQDc7eY7NmQwMFL/zOqNpI03+0txNttXojjZk=",
-        "owner": "nushell",
-        "repo": "nufmt",
-        "rev": "3dfd39c1499f065285052d0324541b8c26870e57",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nushell",
-        "repo": "nufmt",
-        "type": "github"
-      }
-    },
     "obs-rev": {
       "locked": {
         "lastModified": 1771848320,
@@ -281,7 +261,6 @@
         "nix-darwin": "nix-darwin",
         "nixgl": "nixgl",
         "nixpkgs": "nixpkgs_2",
-        "nufmt": "nufmt",
         "obs-rev": "obs-rev",
         "stable": "stable",
         "xremap": "xremap"
