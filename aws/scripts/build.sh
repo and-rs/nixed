@@ -45,7 +45,7 @@ chmod 700 /tmp/cache-hook
 actual="$(nix eval --raw --no-write-lock-file "path:.#packages.x86_64-linux.${TARGET}.outPath")"
 [[ "$actual" == "$EXPECTED_PATH" ]] || { echo 'Source snapshot does not match expected output' >&2; exit 1; }
 df -h /nix /tmp
-nix build --no-write-lock-file --out-link /tmp/package-result \
+nix build --print-build-logs --no-write-lock-file --out-link /tmp/package-result \
   --option post-build-hook /tmp/cache-hook "path:.#packages.x86_64-linux.${TARGET}"
 nix store sign --recursive --key-file /tmp/cache-key "$actual"
 nix copy --to "$cache" "$actual"
