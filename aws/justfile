@@ -1,0 +1,40 @@
+set positional-arguments
+
+auth:
+    aws sts get-caller-identity
+
+check:
+    shellcheck scripts/*.sh
+    python3 -m unittest discover -s tests -v
+    terraform -chdir=infra fmt -check
+    terraform -chdir=infra validate
+
+init:
+    terraform -chdir=infra init
+
+plan:
+    terraform -chdir=infra plan
+
+apply:
+    terraform -chdir=infra apply
+
+key-init:
+    bash scripts/cache.sh key-init
+
+credentials:
+    bash scripts/cache.sh credentials
+
+build package="obs-backgroundremoval":
+    bash scripts/cache.sh build "$1"
+
+status id:
+    bash scripts/cache.sh status "$1"
+
+logs id:
+    bash scripts/cache.sh logs "$1"
+
+stop id:
+    aws codebuild stop-build --id "$1"
+
+fetch id:
+    bash scripts/cache.sh fetch "$1"
