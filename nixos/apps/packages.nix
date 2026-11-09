@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   apps = with pkgs; [
     helium-browser
@@ -48,7 +53,7 @@ let
   ];
 in
 {
-  programs.obs-studio = {
+  programs.obs-studio = lib.mkIf config.nixed.features.obs.enable {
     enable = true;
     package = pkgs.obs-studio.override {
       cudaSupport = true;

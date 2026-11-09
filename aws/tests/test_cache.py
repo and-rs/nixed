@@ -108,6 +108,24 @@ fi''')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
 
+    def test_credentials_renewal_needs_no_terraform_state(self):
+        self.mock("terraform", 'echo unexpected-terraform >> "$CALL_LOG"; exit 99')
+        self.mock("aws", "echo '{\"AccessKeyId\":\"key\",\"SecretAccessKey\":\"secret\",\"SessionToken\":\"token\"}'")
+        self.mock("sudo", 'printf "%s\\n" "$*" >> "$CALL_LOG"')
+        result = self.run_cli("credentials")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.log.read_text()
+        self.assertNotIn("terraform", calls)
+        self.assertIn("install -d -m 700 /var/lib/nix/nixed-cache", calls)
+        self.assertIn("install -m 600", calls)
+        self.assertNotIn("aws_secret_access_key", calls)
+
+    def test_malformed_credentials_do_not_replace_existing_credentials(self):
+        self.mock("aws", "echo '{}'")
+        result = self.run_cli("credentials")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.log.exists())
+
     def test_invalid_target_never_starts_build(self):
         self.mock("aws", 'echo unexpected-aws >> "$CALL_LOG"; exit 99')
         result = self.run_cli("build", "../secrets")

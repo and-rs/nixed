@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Credential renewal must also work on an installed machine without Terraform state.
+if [[ "${1:-}" == credentials ]]; then
+  umask 077
+  credentials="$(mktemp)"
+  trap 'rm -f "$credentials"' EXIT
+  aws configure export-credentials --format process | jq -er '
+    select((.AccessKeyId | type == "string" and length > 0) and
+           (.SecretAccessKey | type == "string" and length > 0)) |
+    "[default]\naws_access_key_id = \(.AccessKeyId)\naws_secret_access_key = \(.SecretAccessKey)\n" +
+    (if .SessionToken then "aws_session_token = \(.SessionToken)\n" else "" end)
+  ' > "$credentials"
+  sudo install -d -m 700 /var/lib/nix/nixed-cache
+  sudo install -m 600 "$credentials" /var/lib/nix/nixed-cache/credentials
+  exit
+fi
+
 outputs="$(terraform -chdir=infra output -json)"
 value() { jq -er --arg key "$1" '.[$key].value' <<< "$outputs"; }
 AWS_REGION="$(value region)"
@@ -69,17 +86,6 @@ case "${1:-}" in
     bash scripts/cache.sh credentials
     sudo env AWS_SHARED_CREDENTIALS_FILE=/var/lib/nix/nixed-cache/credentials \
       nix copy --from "$cache" --extra-trusted-public-keys "$(cat .state/cache-public-key)" "$path"
-    ;;
-  credentials)
-    umask 077
-    credentials="$(mktemp)"
-    trap 'rm -f "$credentials"' EXIT
-    aws configure export-credentials --format process | jq -er '
-      "[default]\naws_access_key_id = \(.AccessKeyId)\naws_secret_access_key = \(.SecretAccessKey)\n" +
-      (if .SessionToken then "aws_session_token = \(.SessionToken)\n" else "" end)
-    ' > "$credentials"
-    sudo install -d -m 700 /var/lib/nix/nixed-cache
-    sudo install -m 600 "$credentials" /var/lib/nix/nixed-cache/credentials
     ;;
   *) echo 'Usage: cache.sh {key-init|build PACKAGE|status ID|logs ID|fetch ID|credentials}' >&2; exit 1 ;;
 esac

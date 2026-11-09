@@ -5,6 +5,10 @@
     obs-rev.url = "github:nixos/nixpkgs/2fc6539b481e1d2569f25f8799236694180c0993";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     stable.url = "github:nixos/nixpkgs/nixos-25.11";
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     agenix = {
       url = "github:ryantm/agenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -103,8 +107,11 @@
 
       nixosConfigurations.default = nixpkgs.lib.nixosSystem {
         system = linuxSystem;
-        specialArgs = { inherit inputs linuxSystem; };
+        specialArgs = {
+          inherit inputs linuxSystem;
+        };
         modules = [
+          inputs.disko.nixosModules.disko
           ./common/default.nix
           ./nixos/configuration.nix
           xremap.nixosModules.default

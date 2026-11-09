@@ -46,61 +46,69 @@ let
   '';
 in
 {
-  age.identityPaths = [
-    "${config.home.homeDirectory}/.ssh/${if isDarwin then "agenix-darwin" else "agenix"}"
-  ];
-
-  age.secrets.hetzner = {
-    file = ../../secrets/hetzner.age;
+  options.hetzner.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = "Decrypt Hetzner credentials and mount the storage box.";
   };
 
-  programs.rclone = lib.mkIf isLinux {
-    enable = true;
-    remotes.hetzner = {
+  config = lib.mkIf config.hetzner.enable {
+    age.identityPaths = [
+      "${config.home.homeDirectory}/.ssh/${if isDarwin then "agenix-darwin" else "agenix"}"
+    ];
+
+    age.secrets.hetzner = {
+      file = ../../secrets/hetzner.age;
+    };
+
+    programs.rclone = lib.mkIf isLinux {
+      enable = true;
+      remotes.hetzner = {
+        config = {
+          type = "webdav";
+          url = "https://u555854.your-storagebox.de";
+          vendor = "other";
+          user = "u555854";
+        };
+        secrets.pass = config.age.secrets.hetzner.path;
+      };
+    };
+
+    systemd.user.services.rclone-hetzner = lib.mkIf isLinux {
+      Unit = {
+        Description = "Mount Hetzner with rclone";
+        After = [
+          "network-online.target"
+          "rclone-config.service"
+        ];
+        Requires = [ "rclone-config.service" ];
+      };
+      Install = {
+        WantedBy = [ "default.target" ];
+      };
+      Service = {
+        Type = "notify";
+        Environment = [ "PATH=/run/wrappers/bin:/run/current-system/sw/bin" ];
+        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${mountPoint}";
+        ExecStart = "${pkgs.rclone}/bin/rclone mount hetzner: ${mountPoint} ${rcloneArgs}";
+        ExecStop = "/run/wrappers/bin/fusermount3 -u ${mountPoint}";
+        Restart = "on-failure";
+        RestartSec = "10s";
+      };
+    };
+
+    launchd.agents.rclone-hetzner = lib.mkIf isDarwin {
+      enable = true;
       config = {
-        type = "webdav";
-        url = "https://u555854.your-storagebox.de";
-        vendor = "other";
-        user = "u555854";
+        Label = "com.and-rs.rclone-hetzner";
+        ProgramArguments = [ "${darwinStartScript}" ];
+        RunAtLoad = true;
+        KeepAlive = {
+          SuccessfulExit = false;
+        };
+        StandardOutPath = "${config.home.homeDirectory}/Library/Logs/rclone-hetzner.log";
+        StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/rclone-hetzner.error.log";
       };
-      secrets.pass = config.age.secrets.hetzner.path;
-    };
-  };
-
-  systemd.user.services.rclone-hetzner = lib.mkIf isLinux {
-    Unit = {
-      Description = "Mount Hetzner with rclone";
-      After = [
-        "network-online.target"
-        "rclone-config.service"
-      ];
-      Requires = [ "rclone-config.service" ];
-    };
-    Install = {
-      WantedBy = [ "default.target" ];
-    };
-    Service = {
-      Type = "notify";
-      Environment = [ "PATH=/run/wrappers/bin:/run/current-system/sw/bin" ];
-      ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${mountPoint}";
-      ExecStart = "${pkgs.rclone}/bin/rclone mount hetzner: ${mountPoint} ${rcloneArgs}";
-      ExecStop = "/run/wrappers/bin/fusermount3 -u ${mountPoint}";
-      Restart = "on-failure";
-      RestartSec = "10s";
-    };
-  };
-
-  launchd.agents.rclone-hetzner = lib.mkIf isDarwin {
-    enable = true;
-    config = {
-      Label = "com.and-rs.rclone-hetzner";
-      ProgramArguments = [ "${darwinStartScript}" ];
-      RunAtLoad = true;
-      KeepAlive = {
-        SuccessfulExit = false;
-      };
-      StandardOutPath = "${config.home.homeDirectory}/Library/Logs/rclone-hetzner.log";
-      StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/rclone-hetzner.error.log";
     };
   };
 }

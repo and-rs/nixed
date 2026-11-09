@@ -1,7 +1,13 @@
-{ pkgs, ... }:
+{
+  pkgs,
+  config,
+  ...
+}:
 {
   imports = [
     ./hardware-configuration.nix
+    ./disks.nix
+    ./features.nix
     ./nix-cache.nix
     ./networking/networkd.nix
 
@@ -21,10 +27,13 @@
   ];
   programs.nix-ld.enable = true;
 
-  fileSystems."/data" = {
-    device = "/dev/disk/by-label/data";
-    fsType = "ext4";
-  };
+  environment.etc.crypttab.text = ''
+    slow ${config.disko.devices.disk.slow.content.partitions.luks.device} /var/lib/cryptsetup-keys/slow.key luks,nofail
+  '';
+
+  systemd.tmpfiles.rules = [
+    "d /slow/storage 0750 and-rs users -"
+  ];
 
   zramSwap.enable = true;
   zramSwap.memoryPercent = 50;
@@ -34,7 +43,8 @@
     limine = {
       enable = true;
       efiSupport = true;
-      secureBoot.enable = true;
+      # Firmware Secure Boot must also be disabled: lockdown blocks hibernation.
+      secureBoot.enable = false;
       style = {
         wallpapers = [ ];
         wallpaperStyle = "centered";
@@ -52,7 +62,7 @@
         };
       };
     };
-    efi.canTouchEfiVariables = false;
+    efi.canTouchEfiVariables = true;
   };
 
   hardware.bluetooth.enable = true;
@@ -85,7 +95,6 @@
 
   services.pipewire = {
     enable = true;
-    jack.enable = true;
     alsa.enable = true;
     pulse.enable = true;
     alsa.support32Bit = true;
