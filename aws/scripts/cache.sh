@@ -53,7 +53,7 @@ case "${1:-}" in
   logs)
     stream="$(aws codebuild batch-get-builds --ids "${2:?build ID required}" --query 'builds[0].logs.streamName' --output text)"
     [[ "$stream" != None ]] || { echo 'Logs not available yet' >&2; exit 1; }
-    aws logs tail "/aws/codebuild/$(value project)" --log-stream-names "$stream" --follow
+    aws logs tail "/aws/codebuild/$(value project)" --log-stream-names "$stream" --since 1d --follow
     ;;
   fetch)
     id="${2:?build ID required}"

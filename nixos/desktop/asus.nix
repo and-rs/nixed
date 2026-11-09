@@ -174,7 +174,7 @@ in
     AttrKeyboardIntegration=internal
   '';
 
-  boot.kernelPackages = pkgs.linuxKernel.packages.linux_zen;
+  boot.kernelPackages = pkgs.linuxPackages_xanmod_stable;
 
   # for virtual OBS camera
   boot.extraModulePackages = with config.boot.kernelPackages; [

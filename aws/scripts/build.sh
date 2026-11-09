@@ -21,7 +21,7 @@ fi
 export PATH="/root/.nix-profile/bin:$PATH"
 export AWS_REGION="${AWS_REGION:-$AWS_DEFAULT_REGION}"
 : "${TARGET:?}" "${EXPECTED_PATH:?}" "${CACHE_BUCKET:?}" "${SIGNING_SECRET:?}"
-cache="s3://${CACHE_BUCKET}?region=${AWS_REGION}"
+cache="s3://${CACHE_BUCKET}?region=${AWS_REGION}&multipart-upload=1&compression=zstd&compression-level=3"
 umask 077
 aws secretsmanager get-secret-value --secret-id "$SIGNING_SECRET" --query SecretString --output text > /tmp/cache-key
 trap 'rm -f /tmp/cache-key' EXIT
@@ -36,9 +36,20 @@ EOF
 cat > /tmp/cache-hook <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+exec 1>&2
+stage=initialization
+trap 'status=$?; printf "[cache-hook] stage=%s exit=%s drv=%s\n" "$stage" "$status" "${DRV_PATH:-unknown}"' EXIT
+printf '[cache-hook] start drv=%s outputs=%s\n' "${DRV_PATH:-unknown}" "${OUT_PATHS:-unset}"
 read -r -a paths <<< "$OUT_PATHS"
+stage=signing
+printf '[cache-hook] signing %s output(s)\n' "${#paths[@]}"
 nix store sign --key-file /tmp/cache-key "${paths[@]}"
-nix copy --to "s3://${CACHE_BUCKET}?region=${AWS_REGION}" "${paths[@]}"
+printf '[cache-hook] signing complete\n'
+stage=upload
+printf '[cache-hook] uploading to s3://%s\n' "$CACHE_BUCKET"
+nix copy --to "s3://${CACHE_BUCKET}?region=${AWS_REGION}&multipart-upload=1&compression=zstd&compression-level=3" "${paths[@]}"
+printf '[cache-hook] upload complete\n'
+stage=complete
 EOF
 chmod 700 /tmp/cache-hook
 

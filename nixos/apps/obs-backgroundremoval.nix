@@ -1,12 +1,15 @@
 {
   lib,
   stdenv,
+  stdenvNoCC,
   fetchFromGitHub,
+  fetchurl,
+  autoPatchelfHook,
+  autoAddDriverRunpath,
   cmake,
   ninja,
   pkg-config,
   obs-studio,
-  onnxruntime,
   opencv,
   qt6,
   curl,
@@ -14,13 +17,66 @@
 }:
 
 let
-  onnxruntimeWithTensorRT = (onnxruntime.override { cudaSupport = true; }).overrideAttrs (old: {
-    buildInputs = old.buildInputs ++ [ cudaPackages.tensorrt ];
-    cmakeFlags = old.cmakeFlags ++ [
-      (lib.cmakeBool "onnxruntime_USE_TENSORRT" true)
-      (lib.cmakeBool "onnxruntime_USE_TENSORRT_BUILTIN_PARSER" true)
+  # Upstream ships both GPU providers; avoid compiling ONNX Runtime's CUDA kernels.
+  onnxruntimeWithTensorRT = stdenvNoCC.mkDerivation rec {
+    pname = "onnxruntime-gpu-bin";
+    version = "1.23.2";
+
+    src = fetchurl {
+      url = "https://github.com/microsoft/onnxruntime/releases/download/v${version}/onnxruntime-linux-x64-gpu-${version}.tgz";
+      hash = "sha256-IIPjYQcqec4WqQ3NX1yzq5JXSoKjzgrAHlz6MVgXb1M=";
+    };
+
+    nativeBuildInputs = [
+      autoPatchelfHook
+      autoAddDriverRunpath
     ];
-  });
+    buildInputs = [
+      stdenv.cc.cc.lib
+    ]
+    ++ map lib.getLib (
+      with cudaPackages;
+      [
+        cuda_cudart
+        libcublas
+        libcurand
+        libcufft
+        cudnn
+        tensorrt
+      ]
+    );
+    # Providers and TensorRT's builder/plugin libraries are loaded with dlopen.
+    appendRunpaths = [
+      "${placeholder "out"}/lib"
+      "${lib.getLib cudaPackages.tensorrt}/lib"
+    ];
+    dontStrip = true;
+
+    installPhase = ''
+      runHook preInstall
+      mkdir -p "$out"
+      cp -a include lib "$out/"
+      install -Dm644 LICENSE "$out/share/licenses/onnxruntime/LICENSE"
+      install -Dm644 ThirdPartyNotices.txt "$out/share/licenses/onnxruntime/ThirdPartyNotices.txt"
+      substituteInPlace "$out/lib/pkgconfig/libonnxruntime.pc" \
+        --replace-fail /usr/local "$out" \
+        --replace-fail '/lib64' '/lib' \
+        --replace-fail '/include/onnxruntime' '/include'
+      substituteInPlace "$out/lib/cmake/onnxruntime/onnxruntimeTargets.cmake" \
+        --replace-fail '/include/onnxruntime' '/include'
+      substituteInPlace "$out/lib/cmake/onnxruntime/onnxruntimeTargets-release.cmake" \
+        --replace-fail '/lib64/' '/lib/'
+      runHook postInstall
+    '';
+
+    meta = {
+      description = "Prebuilt ONNX Runtime with CUDA and TensorRT execution providers";
+      homepage = "https://onnxruntime.ai";
+      license = lib.licenses.mit;
+      platforms = [ "x86_64-linux" ];
+      sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+    };
+  };
 in
 stdenv.mkDerivation rec {
   pname = "obs-backgroundremoval";
@@ -45,8 +101,13 @@ stdenv.mkDerivation rec {
     qt6.qtbase
     curl.dev
     opencv
-    cudaPackages.tensorrt
   ];
+
+  # Never silently produce a CPU-only plugin if provider detection regresses.
+  postConfigure = ''
+    grep -q '^HAVE_ONNXRUNTIME_CUDA_EP:INTERNAL=1$' CMakeCache.txt
+    grep -q '^HAVE_ONNXRUNTIME_TENSORRT_EP:INTERNAL=1$' CMakeCache.txt
+  '';
 
   dontWrapQtApps = true;
 

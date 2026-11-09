@@ -63,7 +63,9 @@
               config.allowUnfree = true;
             };
           in
-          pkgsPinned.callPackage ./nixos/apps/obs-backgroundremoval.nix { };
+          pkgsPinned.callPackage ./nixos/apps/obs-backgroundremoval.nix {
+            obs-studio = final.obs-studio.override { cudaSupport = true; };
+          };
       };
 
       amadeusPkgs = import nixpkgs {
@@ -89,6 +91,8 @@
       devShells.${darwinSystem}.default = mkDevShell darwinSystem;
 
       packages.${linuxSystem} = {
+        obs-backgroundremoval = self.nixosConfigurations.default.pkgs.obs-backgroundremoval;
+
         amadeus = import ./amadeus/default.nix {
           inherit inputs;
           pkgs = amadeusPkgs;

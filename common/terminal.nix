@@ -30,7 +30,6 @@ with pkgs;
   hyperfine
   alacritty
   cbonsai
-  neovide
   cmatrix
   ripgrep
   slides

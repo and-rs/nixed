@@ -41,6 +41,52 @@ class CacheCLI(unittest.TestCase):
             env=self.env, capture_output=True, text=True,
         )
 
+    def run_hook(self):
+        source = (self.aws / "scripts/build.sh").read_text()
+        hook = source.split("cat > /tmp/cache-hook <<'EOF'\n", 1)[1].split("\nEOF", 1)[0]
+        return subprocess.run(
+            ["bash", "-c", hook], capture_output=True, text=True,
+            env=dict(self.env, DRV_PATH="/nix/store/test.drv",
+                     OUT_PATHS="/nix/store/test-out /nix/store/test-dev",
+                     CACHE_BUCKET="cache", AWS_REGION="us-west-2"),
+        )
+
+    def test_hook_logs_success_and_output_paths(self):
+        self.mock("nix", 'printf "%s\\n" "$*" >> "$CALL_LOG"')
+        result = self.run_hook()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        for message in ("drv=/nix/store/test.drv",
+                        "outputs=/nix/store/test-out /nix/store/test-dev",
+                        "signing complete", "upload complete", "stage=complete exit=0"):
+            self.assertIn(message, result.stderr)
+        calls = self.log.read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--to s3://cache?region=us-west-2&multipart-upload=1&compression=zstd&compression-level=3", calls[1])
+        for call in calls:
+            self.assertTrue(call.endswith("/nix/store/test-out /nix/store/test-dev"))
+
+    def test_final_publish_enables_multipart_upload_and_zstd(self):
+        source = (self.aws / "scripts/build.sh").read_text()
+        self.assertIn('cache="s3://${CACHE_BUCKET}?region=${AWS_REGION}&multipart-upload=1&compression=zstd&compression-level=3"', source)
+        self.assertIn('nix copy --to "$cache" "$actual"', source)
+
+    def test_hook_logs_failures_and_preserves_exit_status(self):
+        for command, stage in (("store", "signing"), ("copy", "upload")):
+            with self.subTest(stage=stage):
+                self.mock("nix", f'''
+if [[ $1 == {command} ]]; then
+  echo 'underlying error' >&2
+  exit 42
+fi''')
+                result = self.run_hook()
+                self.assertEqual(result.returncode, 42)
+                self.assertIn("underlying error", result.stderr)
+                self.assertIn(f"stage={stage} exit=42 drv=/nix/store/test.drv", result.stderr)
+                self.assertNotIn("upload complete", result.stderr)
+                if stage == "signing":
+                    self.assertNotIn("uploading to", result.stderr)
+
     def test_failed_build_is_not_fetched(self):
         self.mock("aws", "echo FAILED")
         result = self.run_cli("fetch", "project:123")

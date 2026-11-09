@@ -2,6 +2,7 @@
 {
   imports = [
     ./hardware-configuration.nix
+    ./nix-cache.nix
     ./networking/networkd.nix
 
     ./apps/nixos-utils.nix

@@ -79,7 +79,8 @@ resource "aws_iam_role_policy" "build" {
     Statement = [
       { Effect = "Allow", Action = ["s3:ListBucket", "s3:GetBucketLocation"], Resource = [aws_s3_bucket.source.arn, aws_s3_bucket.cache.arn] },
       { Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${aws_s3_bucket.source.arn}/sources/*"] },
-      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = ["${aws_s3_bucket.cache.arn}/*"] },
+      { Effect = "Allow", Action = ["s3:ListBucketMultipartUploads"], Resource = [aws_s3_bucket.cache.arn] },
+      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"], Resource = ["${aws_s3_bucket.cache.arn}/*"] },
       { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [aws_secretsmanager_secret.signing.arn] },
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = ["${aws_cloudwatch_log_group.build.arn}:*"] }
     ]
