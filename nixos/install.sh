@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Run only from a NixOS installer USB. This script ERASES BOTH internal SSDs.
 set -euo pipefail
+# Disko and nixos-install must create directories readable by system services.
+umask 022
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
@@ -93,9 +95,12 @@ if [[ -e /run/nixed-slow.key ]]; then
   echo 'Refusing to overwrite /run/nixed-slow.key; check the previous attempt.' >&2
   exit 1
 fi
-umask 077
-head -c 64 /dev/urandom > /run/nixed-slow.key
 trap 'rm -f /run/nixed-slow.key' EXIT
+# Keep key creation private without restricting the rest of the installation.
+(
+  umask 077
+  head -c 64 /dev/urandom > /run/nixed-slow.key
+)
 
 # Build/run the Disko version locked by this flake, not an unpinned CLI.
 nix --extra-experimental-features 'nix-command flakes' \
