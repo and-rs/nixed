@@ -49,6 +49,3 @@ with pkgs;
   jq
   fx
 ]
-++ lib.optionals stdenv.hostPlatform.isLinux [
-  inputs.ghostty.packages.${stdenv.hostPlatform.system}.default
-]

@@ -9,8 +9,8 @@
   config = {
     nixed.features = {
       obs.enable = false;
-      privateFonts.enable = false;
-      hetzner.enable = false;
+      privateFonts.enable = true;
+      hetzner.enable = true;
     };
 
     home-manager.users.and-rs = {

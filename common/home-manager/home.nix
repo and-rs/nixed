@@ -12,7 +12,6 @@
   ]
   ++ lib.optionals isLinux [
     ./cursor.nix
-    ./dotfiles.nix
     ./aesthetics.nix
   ];
 
