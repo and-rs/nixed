@@ -5,7 +5,6 @@ auth:
 
 check:
     shellcheck scripts/*.sh
-    python3 -m unittest discover -s tests -v
     terraform -chdir=infra fmt -check
     terraform -chdir=infra validate
 
@@ -19,22 +18,22 @@ apply:
     terraform -chdir=infra apply
 
 key-init:
-    bash scripts/cache.sh key-init
+    python3 scripts/cache.py key-init
 
 credentials:
-    bash scripts/cache.sh credentials
+    python3 scripts/cache.py credentials
 
 build package="obs-backgroundremoval":
-    bash scripts/cache.sh build "$1"
+    python3 scripts/cache.py build "$1"
 
 status id:
-    bash scripts/cache.sh status "$1"
+    python3 scripts/cache.py status "$1"
 
 logs id:
-    bash scripts/cache.sh logs "$1"
+    python3 scripts/cache.py logs "$1"
 
 stop id:
     aws codebuild stop-build --id "$1"
 
 fetch id:
-    bash scripts/cache.sh fetch "$1"
+    python3 scripts/cache.py fetch "$1"

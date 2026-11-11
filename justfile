@@ -96,7 +96,7 @@ font-rekey:
 # --- Infrastructure ---
 
 plan:
-  terraform -chdir=infra plan
+  terraform -chdir=aws/infra plan
 
 clean:
-  terraform -chdir=infra destroy
+  terraform -chdir=aws/infra destroy

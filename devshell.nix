@@ -1,15 +1,17 @@
 { pkgs }:
 let
-  terraformBinary = {
-    x86_64-linux = {
-      platform = "linux_amd64";
-      sha256 = "4638628058e71a55212b1c563712eac03b902128f40740f3dc8174df12135061";
-    };
-    aarch64-darwin = {
-      platform = "darwin_arm64";
-      sha256 = "b1ecb3fe0d0a0290c1ab6f83d967d43f25da05d0b671ee0fb355252268dce95a";
-    };
-  }.${pkgs.stdenv.hostPlatform.system};
+  terraformBinary =
+    {
+      x86_64-linux = {
+        platform = "linux_amd64";
+        sha256 = "4638628058e71a55212b1c563712eac03b902128f40740f3dc8174df12135061";
+      };
+      aarch64-darwin = {
+        platform = "darwin_arm64";
+        sha256 = "b1ecb3fe0d0a0290c1ab6f83d967d43f25da05d0b671ee0fb355252268dce95a";
+      };
+    }
+    .${pkgs.stdenv.hostPlatform.system};
   terraform = pkgs.stdenvNoCC.mkDerivation rec {
     pname = "terraform-bin";
     version = "1.17.1";
@@ -41,19 +43,4 @@ pkgs.mkShell {
     shellcheck
     python3
   ];
-
-  shellHook = ''
-    export REGION="us-west-2"
-    export REPO_URL="github:and-rs/nixed"
-
-    export TF_VAR_repo_url="$REPO_URL"
-    export TF_VAR_target_region="$REGION"
-
-    export AWS_DEFAULT_REGION="$REGION"
-    export AWS_REGION="$REGION"
-
-    aws configure set profile.nix-dev.region "$REGION"
-    aws configure set profile.nix-dev.credential_process "aws configure export-credentials --profile default --format process"
-    export AWS_PROFILE="nix-dev"
-  '';
 }

@@ -19,7 +19,6 @@
 
     # needed for winboat
     freerdp
-    docker_29
     docker-compose
 
     libcxx.dev
@@ -35,15 +34,10 @@
     CC = "${pkgs.stdenv.cc}/bin/gcc";
     CXXFLAGS = "-O2 -D_GNU_SOURCE";
     CFLAGS = "-O2 -D_GNU_SOURCE";
-
-    PYTHONPATH = "${config.internal.pythonWithTk}/${config.internal.pythonWithTk.sitePackages}";
-
-    TCL_LIBRARY = "${pkgs.tcl}/lib/tcl${pkgs.tcl.version}";
-    TK_LIBRARY = "${pkgs.tk}/lib/tk${pkgs.tk.version}";
   };
 
-  users.extraGroups.docker.members = [ "and-rs" ];
   virtualisation.docker = {
+    package = pkgs.docker_29;
     rootless = {
       enable = true;
       setSocketVariable = true;

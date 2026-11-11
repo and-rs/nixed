@@ -2,7 +2,7 @@ version: 0.2
 phases:
   install:
     commands:
-      - bash aws/scripts/build.sh install
+      - bash aws/scripts/install.sh
   build:
     commands:
-      - bash aws/scripts/build.sh build
+      - python3 aws/scripts/build.py build
