@@ -4,6 +4,8 @@
   appimageTools,
   makeDesktopItem,
   symlinkJoin,
+  callPackage,
+  writeShellScriptBin,
 }:
 let
   pname = "helium-browser";
@@ -13,9 +15,13 @@ let
     hash = "sha256-0eG5k9+/7gbp+Q6KKc1Y6HpHUZewT8BIdQYifDOFacs=";
   };
 
-  helium = appimageTools.wrapType2 {
+  theme = callPackage ../../extensions/browser-theme { };
+  unwrapped = appimageTools.wrapType2 {
     inherit pname version src;
   };
+  helium = writeShellScriptBin "helium-browser" ''
+    exec ${theme}/bin/browser-theme launch -- ${unwrapped}/bin/helium-browser "$@"
+  '';
 
   desktopItem = makeDesktopItem {
     name = "helium";
@@ -36,6 +42,7 @@ symlinkJoin {
   inherit version;
   paths = [
     helium
+    unwrapped
     desktopItem
   ];
 

@@ -2,6 +2,7 @@
 with pkgs;
 [
   inputs.agenix.packages.${stdenv.hostPlatform.system}.default
+  (callPackage ../extensions/browser-theme { })
   bob-nvim
   kakoune
   chezmoi

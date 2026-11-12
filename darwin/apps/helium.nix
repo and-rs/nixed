@@ -33,7 +33,9 @@ let
   };
 in
 {
-  environment.systemPackages = [ helium ];
+  environment.systemPackages = [
+    (import ../../extensions/browser-theme/darwin.nix { inherit pkgs helium; })
+  ];
 
   system.activationScripts.postActivation.text = ''
     policy="/Library/Managed Preferences/net.imput.helium.plist"

@@ -1,4 +1,7 @@
 { pkgs }:
+let
+  theme = pkgs.callPackage ../extensions/browser-theme { };
+in
 pkgs.symlinkJoin {
   name = "google-chrome-host-integrated";
   paths = [ pkgs.google-chrome ];
@@ -7,7 +10,8 @@ pkgs.symlinkJoin {
     rm -f "$out/bin/google-chrome"
     rm -f "$out/bin/google-chrome-stable"
 
-    makeWrapper ${pkgs.google-chrome}/bin/google-chrome-stable "$out/bin/google-chrome-stable" \
+    makeWrapper ${theme}/bin/browser-theme "$out/bin/google-chrome-stable" \
+      --add-flags 'launch --browser chrome -- ${pkgs.google-chrome}/bin/google-chrome-stable' \
       --suffix PATH : ${
         pkgs.lib.makeBinPath [
           pkgs.xdg-utils
