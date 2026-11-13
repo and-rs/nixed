@@ -16,11 +16,12 @@ let
   };
 
   theme = callPackage ../../extensions/browser-theme { };
+  tabSearch = callPackage ../../extensions/tab-search { };
   unwrapped = appimageTools.wrapType2 {
     inherit pname version src;
   };
   helium = writeShellScriptBin "helium-browser" ''
-    exec ${theme}/bin/browser-theme launch -- ${unwrapped}/bin/helium-browser "$@"
+    exec ${theme}/bin/browser-theme launch -- ${unwrapped}/bin/helium-browser --load-extension=${tabSearch}/share/tab-search "$@"
   '';
 
   desktopItem = makeDesktopItem {

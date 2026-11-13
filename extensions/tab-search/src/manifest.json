@@ -1,0 +1,32 @@
+{
+	"manifest_version": 3,
+	"name": "Tab Search",
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApvfklcQmxRHTjJtHleyjrmqgqGFxPGrn/0Lm2UE+ENpNjDwDc1ALgmnGi+QqNkZ0em63qDO77aYlAoqTatbYpVGU1doDqnoyrqZcM33AAjmUzBcifw8R8/ZmoUvQNxsJBM4JgUI9kFHWbbw98qU9rRDdqNZEA10iY9obzrqYDCYzFokKX8eUCIfxvyKoQeRrdj5inht7m4rKbXIcBOeDBrFAJDyvPTH4ZLh2p3WA/UUn6wWSb+LeHROqB5OuZxaBEqTj4n/CelbbD7Ocr8JZiLxRspE+vpKxvbqFYBLKIBGIuK2wd1xE6IKr7e7azNaiFHeyY6A0qfQ7b8lbXuHecwIDAQAB",
+	"short_name": "Tab Search",
+	"version": "2.0.2",
+	"description": "Search open tabs and bookmarks.",
+	"author": "Brometheus",
+	"minimum_chrome_version": "121",
+	"permissions": ["tabs", "bookmarks", "favicon"],
+	"icons": {
+		"16": "img/icon-16.png",
+		"48": "img/icon-48.png",
+		"128": "img/icon-128.png"
+	},
+	"action": {
+		"default_title": "Tab Search",
+		"default_popup": "popup.html",
+		"default_icon": {
+			"16": "img/icon-16.png",
+			"48": "img/icon-48.png"
+		}
+	},
+	"commands": {
+		"_execute_action": {
+			"suggested_key": {
+				"default": "Ctrl+O",
+				"mac": "Command+O"
+			}
+		}
+	}
+}

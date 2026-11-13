@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Tab Search</title>
+	<link rel="stylesheet" href="css/popup.css">
+	<script type="module" src="js/popup/main.js"></script>
+</head>
+<body>
+	<input id="search" type="search" aria-label="Search tabs or bookmarks"
+		aria-controls="results" aria-autocomplete="list" autocomplete="off"
+		placeholder="Search tabs, or /b for bookmarks" spellcheck="false" autofocus>
+	<div id="results" role="listbox" aria-label="Search results"></div>
+	<div id="status" role="status" aria-live="polite">Loading tabs…</div>
+</body>
+</html>

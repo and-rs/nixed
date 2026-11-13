@@ -1,6 +1,7 @@
 { pkgs, helium }:
 let
   theme = pkgs.callPackage ./default.nix { };
+  tabSearch = pkgs.callPackage ../tab-search { };
   original = "${helium}/Applications/Helium.app";
 in
 pkgs.runCommand "helium-themed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
@@ -17,5 +18,5 @@ pkgs.runCommand "helium-themed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
       plistlib.dump(info, target)
   PY
   makeWrapper ${theme}/bin/browser-theme "$app/Contents/MacOS/browser-theme" \
-    --add-flags 'launch -- ${original}/Contents/MacOS/Helium'
+    --add-flags 'launch -- ${original}/Contents/MacOS/Helium --load-extension=${tabSearch}/share/tab-search'
 ''
