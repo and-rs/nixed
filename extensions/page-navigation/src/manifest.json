@@ -1,0 +1,15 @@
+{
+	"manifest_version": 3,
+	"name": "Page Navigation",
+	"version": "1.0.0",
+	"description": "Keyboard hints and scrolling for web pages.",
+	"content_scripts": [{
+		"matches": ["<all_urls>"],
+		"js": ["js/algorithms.js", "js/content.js"],
+		"run_at": "document_idle"
+	}],
+	"web_accessible_resources": [{
+		"resources": ["css/page-navigation.css"],
+		"matches": ["<all_urls>"]
+	}]
+}
