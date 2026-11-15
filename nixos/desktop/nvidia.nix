@@ -1,6 +1,6 @@
 { ... }:
 {
-  systemd.services.nvidia-powerd.enable = false;
+  systemd.services.nvidia-powerd.enable = true;
   boot.blacklistedKernelModules = [ "nouveau" ];
   boot.extraModprobeConfig = ''
     blacklist nouveau

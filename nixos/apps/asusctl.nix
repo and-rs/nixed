@@ -18,19 +18,19 @@
 }:
 
 let
-  version = "6.4.0";
+  version = "6.5.0";
   src = fetchFromGitHub {
     owner = "OpenGamingCollective";
     repo = "asusctl";
     # Pin the commit instead of a retaggable GitHub release tag.
-    rev = "e6c1469ccf2a745c6a1aff763852df90066c6baa";
-    hash = "sha256-qLdOdZaQm3t7LhvoCCo/FwZo4O7Z9aP1KPPlERgZX00=";
+    rev = "ec09e7629da3e4081d9c342e7f323e30158cccfd";
+    hash = "sha256-UTs9LF2EKUj5vxG0hc9V4DvCFMbyYgvA645ClxnE3WM=";
   };
 in
 rustPlatform.buildRustPackage {
   pname = "asusctl";
   inherit version src;
-  cargoHash = "sha256-sAJ4el6URZXHD2NWiWpJSBf8Qeq2v/y+F9KpMCc8BbE=";
+  cargoHash = "sha256-Kujj8gQ5qsEv2iLO3T1JoK0E2q0ByOhxpuN942EvB7Q=";
 
   postPatch = ''
     substituteInPlace data/asusd.service \
