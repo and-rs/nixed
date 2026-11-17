@@ -14,7 +14,11 @@ pkgs.symlinkJoin {
 
   paths = commonPackages ++ [
     (stablePkgs.azure-cli.override {
-      withExtensions = [ stablePkgs.azure-cli-extensions.azure-devops ];
+      withExtensions = [
+        stablePkgs.azure-cli-extensions.azure-devops
+        stablePkgs.azure-cli-extensions.databricks
+        stablePkgs.azure-cli-extensions.resource-graph
+      ];
     })
     (pkgs.rofi.override { plugins = [ pkgs.rofi-calc ]; })
 
