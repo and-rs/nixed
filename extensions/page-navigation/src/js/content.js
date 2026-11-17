@@ -23,33 +23,64 @@
 		return element?.closest?.(editableSelector);
 	}
 
+	function parent(element) {
+		return element.assignedSlot || element.parentElement || element.getRootNode()?.host;
+	}
+
+	function* ancestors(element) {
+		for (let current = element; current; current = parent(current)) yield current;
+	}
+
+	function* renderedElements(root) {
+		if (root === host) return;
+		if (root.matches) yield root;
+		const assigned = root.localName === "slot" ? root.assignedNodes({flatten: true}) : [];
+		const children = assigned.length ? assigned : (root.shadowRoot || root).children;
+		for (const child of children) {
+			if (child.nodeType === 1) yield* renderedElements(child);
+		}
+	}
+
 	function visible(element) {
 		const rect = element.getBoundingClientRect();
 		const style = getComputedStyle(element);
 		return rect.width > 0 && rect.height > 0 &&
 			style.visibility !== "hidden" &&
-			Number(style.opacity) > 0 &&
+			[...ancestors(element)].every(ancestor => {
+				const style = getComputedStyle(ancestor);
+				return style.display !== "none" && Number(style.opacity) > 0 &&
+					!ancestor.matches("[inert], [aria-hidden='true']");
+			}) &&
 			rect.bottom > 0 && rect.right > 0 &&
 			rect.top < innerHeight && rect.left < innerWidth;
+	}
+
+	function activeModal(elements) {
+		const native = elements.filter(element => element.matches(":modal") && visible(element)).at(-1);
+		return elements.filter(element =>
+			element.matches('[aria-modal="true"]') && visible(element) &&
+			(!native || [...ancestors(element)].includes(native))
+		).at(-1) || native;
 	}
 
 	function clickable(element) {
 		return !element.disabled && !element.readOnly && !element.hasAttribute("disabled") &&
 			element.getAttribute("aria-disabled") !== "true" &&
-			!element.closest("[inert], [aria-hidden='true']") && visible(element);
+			visible(element);
 	}
 
-	function candidates(root) {
+	function candidates(elements) {
 		const selector = [
 			"a[href]", "area[href]", "button", editableSelector,
 			"[role=button]", "[role=link]",
 			"[tabindex]:not([tabindex='-1'])"
 		].join(",");
-		const elements = [...root.querySelectorAll(selector)].filter(clickable);
-		const candidates = new Set(elements);
-		return elements.filter(element => {
-			for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-				if (candidates.has(parent) && parent.matches("a[href],button,[role=button],[role=link]")) {
+		const matches = elements.filter(element => element.matches(selector) && clickable(element));
+		const candidates = new Set(matches);
+		return matches.filter(element => {
+			for (const ancestor of ancestors(element)) {
+				if (ancestor !== element && candidates.has(ancestor) &&
+					ancestor.matches("a[href],button,[role=button],[role=link]")) {
 					return false;
 				}
 			}
@@ -64,8 +95,7 @@
 		if (!scrollRefresh) host.hidePopover();
 	}
 
-	function showOverlay() {
-		const modal = document.querySelector(":modal");
+	function showOverlay(modal) {
 		(modal || document.documentElement).append(host);
 		host.hidePopover();
 		host.showPopover();
@@ -73,7 +103,9 @@
 
 	function showHints() {
 		clearHints();
-		const elements = candidates(document.querySelector(":modal") || document);
+		const rendered = [...renderedElements(document)];
+		const modal = activeModal(rendered);
+		const elements = candidates(modal ? [...renderedElements(modal)] : rendered);
 		if (!elements.length) return;
 		const labels = labelsFor(elements.length);
 		hints = elements.map((element, index) => ({
@@ -85,7 +117,7 @@
 			hint.node.className = "hint";
 			shadow.append(hint.node);
 		}
-		showOverlay();
+		showOverlay(modal);
 		positionHints();
 	}
 
@@ -170,7 +202,7 @@
 		label.style.top = `${Math.max(0, rect.top)}px`;
 		label.style.left = `${Math.max(0, rect.left)}px`;
 		shadow.append(outline, label);
-		showOverlay();
+		showOverlay(activeModal([...renderedElements(document)]));
 		scrollRefresh = setTimeout(clearScrollTarget, 700);
 	}
 
@@ -194,7 +226,7 @@
 
 	document.addEventListener("keydown", event => {
 		if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey ||
-			event.metaKey || editable(event.target)) return;
+			event.metaKey || event.composedPath().some(editable)) return;
 
 		if (hints.length) {
 			if (event.key === "Escape") {
