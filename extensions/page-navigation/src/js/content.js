@@ -1,6 +1,9 @@
 (() => {
 	const {alphabet, labelsFor, nextScrollTarget} = PageNavigation;
 	const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]';
+	const scrollSpeed = 900;
+	const scrollEaseMs = 50;
+	const scrollTapMs = 120;
 	const host = document.createElement("div");
 	host.id = "page-navigation-host";
 	host.popover = "manual";
@@ -18,6 +21,8 @@
 	let scrollTargets;
 	let scrollIndex = 0;
 	let scrollRefresh;
+	let scrollMotion;
+	let scrollFrame;
 
 	function editable(element) {
 		return element?.closest?.(editableSelector);
@@ -102,6 +107,7 @@
 	}
 
 	function showHints() {
+		stopScroll();
 		clearHints();
 		const rendered = [...renderedElements(document)];
 		const modal = activeModal(rendered);
@@ -207,6 +213,7 @@
 	}
 
 	function cycleScrollTarget() {
+		stopScroll();
 		const previous = scrollTargets?.[scrollIndex];
 		scrollTargets = getScrollTargets();
 		const next = nextScrollTarget(scrollTargets, previous);
@@ -215,13 +222,51 @@
 		if (target) showScrollTarget(target, scrollIndex, scrollTargets.length);
 	}
 
-	function scroll(direction) {
+	function stopScroll() {
+		if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+		scrollFrame = undefined;
+		scrollMotion = undefined;
+	}
+
+	function animateScroll(time) {
+		const motion = scrollMotion;
+		if (!motion.target.isConnected) {
+			stopScroll();
+			return;
+		}
+		function advance(end, speed) {
+			// Integrate the easing curve; CSS smooth scrolling must not animate each frame again.
+			const elapsed = Math.min(end - motion.last, 50);
+			const decay = Math.exp(-elapsed / scrollEaseMs);
+			const distance = speed * elapsed + (motion.velocity - speed) * scrollEaseMs * (1 - decay);
+			motion.velocity = speed + (motion.velocity - speed) * decay;
+			motion.last = end;
+			motion.target.scrollBy({top: distance / 1000, behavior: "instant"});
+		}
+		if (motion.last < motion.release) advance(Math.min(time, motion.release), motion.direction * scrollSpeed);
+		if (time > motion.release) advance(time, 0);
+		if (time >= motion.release && Math.abs(motion.velocity) < 2) {
+			stopScroll();
+		} else {
+			scrollFrame = requestAnimationFrame(animateScroll);
+		}
+	}
+
+	function scroll(key) {
 		if (!scrollTargets || !scrollTargets[scrollIndex]?.isConnected) {
 			scrollTargets = getScrollTargets();
 			scrollIndex = 0;
 		}
 		const target = scrollTargets[scrollIndex] || document.scrollingElement;
-		target?.scrollBy({top: direction * 70, behavior: "smooth"});
+		if (!target) return;
+		const now = performance.now();
+		if (scrollMotion?.target !== target) stopScroll();
+		if (!scrollMotion) scrollMotion = {target, velocity: 0, last: now};
+		Object.assign(scrollMotion, {
+			key, direction: key === "j" ? 1 : -1,
+			minimumUntil: now + scrollTapMs, release: Infinity
+		});
+		if (scrollFrame === undefined) scrollFrame = requestAnimationFrame(animateScroll);
 	}
 
 	document.addEventListener("keydown", event => {
@@ -247,7 +292,7 @@
 		if (event.key === "s" || event.key === "S") {
 			showHints();
 		} else if (event.key === "j" || event.key === "k") {
-			scroll(event.key === "j" ? 1 : -1);
+			if (!event.repeat) scroll(event.key);
 		} else if (event.key.toLowerCase() === "c" && event.shiftKey) {
 			cycleScrollTarget();
 		} else {
@@ -256,6 +301,20 @@
 		event.preventDefault();
 		event.stopImmediatePropagation();
 	}, true);
+
+	document.addEventListener("keyup", event => {
+		if (scrollMotion?.key === event.key.toLowerCase()) {
+			scrollMotion.release = Math.max(performance.now(), scrollMotion.minimumUntil);
+		}
+	}, true);
+	document.addEventListener("focusin", event => {
+		if (event.composedPath().some(editable)) stopScroll();
+	}, true);
+	document.addEventListener("visibilitychange", () => {
+		if (document.hidden) stopScroll();
+	});
+	addEventListener("blur", stopScroll);
+	addEventListener("pagehide", stopScroll);
 
 	addEventListener("scroll", () => {
 		if (hints.length) requestAnimationFrame(positionHints);

@@ -79,7 +79,7 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 			};
 		},
 		get children() { scans++; return modal ? [modal] : targets; },
-		addEventListener(type, callback) { keydown = callback; }
+		addEventListener(type, callback) { if (type === "keydown") keydown = callback; }
 	};
 	runInNewContext(readFileSync(join(__dirname, "src/js/content.js"), "utf8"), {
 		PageNavigation: algorithms, document,
@@ -179,10 +179,18 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 });
 
 function shadowPage() {
-	let keydown;
+	const listeners = {};
+	const frames = new Map();
+	const movements = [];
+	let now = 0;
+	let frameId = 0;
 	const clicked = [];
 	const rect = {top: 20, left: 20, width: 100, height: 20, right: 120, bottom: 40};
-	const document = {children: [], addEventListener(type, callback) { keydown = callback; }};
+	const document = {
+		children: [],
+		querySelectorAll() { return this.scrollAreas || []; },
+		addEventListener(type, callback) { listeners[type] = callback; }
+	};
 	function container(properties = {}) {
 		return Object.defineProperties({
 			children: [],
@@ -242,23 +250,44 @@ function shadowPage() {
 	document.documentElement = element("html");
 	document.children.push(document.documentElement);
 	document.documentElement.parentNode = document;
+	document.scrollingElement = document.documentElement;
+	document.scrollingElement.scrollBy = options => movements.push({...options, time: now});
 	document.createElement = element;
 	runInNewContext(readFileSync(join(__dirname, "src/js/content.js"), "utf8"), {
 		PageNavigation: algorithms, document,
 		chrome: {runtime: {getURL: path => path}},
 		innerWidth: 1000, innerHeight: 1000,
 		getComputedStyle: node => ({visibility: "visible", display: "block", opacity: "1", ...node.style}),
-		addEventListener() {}
+		addEventListener(type, callback) { listeners[type] = callback; },
+		performance: {now: () => now},
+		requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
+		cancelAnimationFrame(id) { frames.delete(id); },
+		setTimeout() { return 1; },
+		clearTimeout() {}
 	});
 	const overlay = document.documentElement.children[0];
-	function key(key) {
-		keydown({
-			key, composedPath: () => [],
-			preventDefault() {}, stopImmediatePropagation() {}
-		});
+	function key(key, type = "keydown", properties = {}) {
+		const event = {
+			key, shiftKey: key === "C", composedPath: () => [],
+			preventDefault() { this.prevented = true; },
+			stopImmediatePropagation() {},
+			...properties
+		};
+		listeners[type](event);
+		return event;
 	}
 	return {
-		element, document, overlay,
+		element, document, overlay, key, movements, frames,
+		emit(type, event = {}) { listeners[type](event); },
+		advance(milliseconds, interval = 10) {
+			const end = now + milliseconds;
+			while (now < end) {
+				now = Math.min(now + interval, end);
+				const pending = [...frames.values()];
+				frames.clear();
+				for (const callback of pending) callback(now);
+			}
+		},
 		targets() {
 			clicked.length = 0;
 			key("s");
@@ -356,4 +385,120 @@ test("native shadow modals take precedence and composed ancestors block hidden c
 	page.document.documentElement.append(component, custom);
 	assert.deepEqual(page.targets(), ["native"]);
 	assert.equal(page.overlay.parentElement, native);
+});
+
+test("scroll taps are larger eased motions with the same release curve as holds", () => {
+	const page = shadowPage();
+	page.key("j");
+	page.key("j", "keyup");
+	assert.equal(page.movements.length, 0);
+	page.advance(600);
+	const distances = page.movements.map(move => move.top);
+	const total = distances.reduce((sum, distance) => sum + distance, 0);
+	assert.ok(total > 105 && total < 110, `tap distance: ${total}`);
+	assert.ok(distances[0] < distances[1]);
+	assert.ok(distances.at(-1) < distances.at(-2));
+	assert.ok(page.movements.every(move => move.behavior === "instant"));
+	assert.equal(page.frames.size, 0);
+
+	page.key("k");
+	page.advance(600);
+	const beforeRelease = page.movements.at(-1).top;
+	assert.ok(Math.abs(beforeRelease + 9) < 0.01);
+	page.key("K", "keyup");
+	page.advance(10);
+	assert.ok(page.movements.at(-1).top > beforeRelease);
+	assert.ok(page.movements.at(-1).top < 0);
+	page.advance(500);
+	assert.equal(page.frames.size, 0);
+});
+
+test("held scrolling is frame-rate independent and ignores keyboard repeat", () => {
+	function hold(interval, repeat) {
+		const page = shadowPage();
+		page.key("j");
+		for (let elapsed = 0; elapsed < 1000; elapsed += 20) {
+			if (repeat) page.key("j", "keydown", {repeat: true});
+			assert.equal(page.frames.size, 1);
+			page.advance(20, interval);
+		}
+		const distance = page.movements.reduce((sum, move) => sum + move.top, 0);
+		assert.ok(distance > 850 && distance < 860);
+		page.key("j", "keyup");
+		page.advance(500, interval);
+		assert.equal(page.frames.size, 0);
+		return page.movements.reduce((sum, move) => sum + move.top, 0);
+	}
+	assert.ok(Math.abs(hold(5, false) - hold(20, true)) < 0.1);
+});
+
+test("direction changes and a new press during deceleration preserve velocity", () => {
+	const page = shadowPage();
+	page.key("j");
+	page.advance(400);
+	page.key("k");
+	page.key("j", "keyup");
+	page.advance(10);
+	assert.ok(page.movements.at(-1).top > 0, "reversal should not jump to full reverse speed");
+	page.advance(400);
+	assert.ok(page.movements.at(-1).top < -8.9);
+	page.key("k", "keyup");
+	page.advance(30);
+	page.key("k");
+	page.advance(10);
+	const resumed = page.movements.at(-1).top;
+	assert.ok(resumed < -4 && resumed > -8, "a fresh press should preserve the remaining velocity");
+	page.advance(20);
+	assert.ok(page.movements.at(-1).top < resumed, "a fresh press should smoothly regain speed");
+	page.key("k", "keyup");
+	page.advance(600);
+	assert.equal(page.frames.size, 0);
+});
+
+test("scrolling stops on lost focus, hidden pages, editable focus, hints, or target removal", () => {
+	for (const interrupt of [
+		page => page.emit("blur"),
+		page => page.emit("pagehide"),
+		page => { page.document.hidden = true; page.emit("visibilitychange"); },
+		page => page.emit("focusin", {composedPath: () => [{closest: () => true}]}),
+		page => page.key("s"),
+		page => { page.document.scrollingElement.isConnected = false; page.advance(10); }
+	]) {
+		const page = shadowPage();
+		page.key("j");
+		page.advance(200);
+		interrupt(page);
+		const count = page.movements.length;
+		page.advance(500);
+		assert.equal(page.movements.length, count);
+		assert.equal(page.frames.size, 0);
+	}
+	const page = shadowPage();
+	page.key("j", "keydown", {composedPath: () => [{closest: () => true}]});
+	assert.equal(page.frames.size, 0);
+});
+
+test("scroll target cycling cancels motion and subsequent presses use the selected area", () => {
+	const page = shadowPage();
+	const area = page.element("div");
+	area.style.overflowY = "auto";
+	area.scrollHeight = 1000;
+	area.clientHeight = 100;
+	const nestedMovements = [];
+	area.scrollBy = options => nestedMovements.push(options.top);
+	page.document.documentElement.append(area);
+	page.document.scrollAreas = [area];
+	page.key("j");
+	page.advance(200);
+	page.key("C");
+	assert.equal(page.frames.size, 0);
+	const count = page.movements.length;
+	page.key("j", "keyup");
+	page.key("j");
+	page.advance(200);
+	assert.ok(nestedMovements.length > 0);
+	assert.equal(page.movements.length, count);
+	page.key("j", "keyup");
+	page.advance(500);
+	assert.equal(page.frames.size, 0);
 });
