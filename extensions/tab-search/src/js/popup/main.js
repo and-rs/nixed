@@ -148,6 +148,10 @@ search.addEventListener("keydown", async event => {
 		await ready;
 		await pendingResults;
 		await openItem(matches[selected], event);
+	} else if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
+		["n", "p"].includes(event.key.toLowerCase())) {
+		event.preventDefault();
+		select(selected + (event.key.toLowerCase() === "n" ? 1 : -1));
 	} else if (["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(event.key)) {
 		event.preventDefault();
 		const step = event.key.startsWith("Page") ? 10 : 1;

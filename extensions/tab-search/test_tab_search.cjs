@@ -24,8 +24,11 @@ test("only the toolbar action and necessary permissions remain", () => {
 	const digest = createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32);
 	const id = [...digest].map(char => String.fromCharCode(97 + parseInt(char, 16))).join("");
 	assert.equal(id, "mmfbflaekjfllceokohbkjafnljjgafl", "source manifest preserves the installed extension identity");
-	for (const path of [manifest.action.default_popup, ...Object.values(manifest.icons)]) {
-		assert.ok(existsSync(join(__dirname, "src", path)), path);
+	assert.ok(existsSync(join(__dirname, "src", manifest.action.default_popup)));
+	assert.equal(manifest.icons, undefined);
+	assert.equal(manifest.action.default_icon, undefined);
+	for (const size of [16, 48, 128]) {
+		assert.ok(!existsSync(join(__dirname, `src/img/icon-${size}.png`)));
 	}
 });
 
@@ -155,8 +158,28 @@ test("popup refresh preserves selection by identity; removal clamps and a new qu
 			createDocumentFragment: () => new Element()
 		}
 	});
-	const key = key => search.listeners.keydown({key, preventDefault() {}});
+	const key = async (key, modifiers = {}) => {
+		let prevented = false;
+		await search.listeners.keydown({key, ...modifiers, preventDefault() { prevented = true; }});
+		return prevented;
+	};
 	const selectedIndex = () => results.children.findIndex(row => row.attributes["aria-selected"]);
+	assert.equal(await key("n", {ctrlKey: true}), true);
+	assert.equal(selectedIndex(), 1);
+	await key("n", {ctrlKey: true, repeat: true});
+	await key("n", {ctrlKey: true});
+	assert.equal(selectedIndex(), 2, "Ctrl-N clamps at the last result");
+	assert.equal(await key("p", {ctrlKey: true}), true);
+	assert.equal(selectedIndex(), 1);
+	await key("p", {ctrlKey: true});
+	await key("p", {ctrlKey: true});
+	assert.equal(selectedIndex(), 0, "Ctrl-P clamps at the first result");
+	for (const modifiers of [{}, {metaKey: true}, {ctrlKey: true, metaKey: true},
+		{ctrlKey: true, altKey: true}, {ctrlKey: true, shiftKey: true},
+		{ctrlKey: true, isComposing: true}]) {
+		assert.equal(await key("n", modifiers), false);
+		assert.equal(selectedIndex(), 0);
+	}
 	await key("ArrowDown");
 	assert.equal(selectedIndex(), 1);
 	tabs = [tab(3), tab(1), tab(2)];
@@ -173,6 +196,9 @@ test("popup refresh preserves selection by identity; removal clamps and a new qu
 	tabs = [];
 	await chrome.tabs.onRemoved.callback();
 	assert.equal(results.children.length, 0);
+	assert.equal(search.attributes["aria-activedescendant"], undefined);
+	assert.equal(await key("n", {ctrlKey: true}), true);
+	assert.equal(await key("p", {ctrlKey: true}), true);
 	assert.equal(search.attributes["aria-activedescendant"], undefined);
 });
 

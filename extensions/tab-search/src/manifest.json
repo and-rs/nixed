@@ -8,18 +8,9 @@
 	"author": "Brometheus",
 	"minimum_chrome_version": "121",
 	"permissions": ["tabs", "bookmarks", "favicon"],
-	"icons": {
-		"16": "img/icon-16.png",
-		"48": "img/icon-48.png",
-		"128": "img/icon-128.png"
-	},
 	"action": {
 		"default_title": "Tab Search",
-		"default_popup": "popup.html",
-		"default_icon": {
-			"16": "img/icon-16.png",
-			"48": "img/icon-48.png"
-		}
+		"default_popup": "popup.html"
 	},
 	"commands": {
 		"_execute_action": {
