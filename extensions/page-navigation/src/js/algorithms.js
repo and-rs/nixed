@@ -15,11 +15,5 @@
 		});
 	}
 
-	function nextScrollTarget(targets, current) {
-		if (!targets.length) return {target: undefined, index: 0};
-		const index = (targets.indexOf(current) + 1) % targets.length;
-		return {target: targets[index], index};
-	}
-
-	globalThis.PageNavigation = {alphabet, labelsFor, nextScrollTarget};
+	globalThis.PageNavigation = {alphabet, labelsFor};
 })();

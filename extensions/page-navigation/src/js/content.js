@@ -1,5 +1,5 @@
 (() => {
-	const {alphabet, labelsFor, nextScrollTarget} = PageNavigation;
+	const {alphabet, labelsFor} = PageNavigation;
 	const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]';
 	const scrollSpeed = 900;
 	const scrollEaseMs = 50;
@@ -12,14 +12,19 @@
 	const stylesheet = document.createElement("link");
 	stylesheet.rel = "stylesheet";
 	stylesheet.href = chrome.runtime.getURL("css/page-navigation.css");
-	stylesheet.addEventListener("load", positionHints);
+	let stylesheetReady = false;
+	stylesheet.addEventListener("load", () => {
+		stylesheetReady = true;
+		positionHints();
+	});
 	shadow.append(stylesheet);
 	(document.documentElement || document).append(host);
 
 	let hints = [];
 	let hintPrefix = "";
-	let scrollTargets;
-	let scrollIndex = 0;
+	let hintFramePending = false;
+	let scrollHints = false;
+	let scrollTarget;
 	let scrollRefresh;
 	let scrollMotion;
 	let scrollFrame;
@@ -46,18 +51,45 @@
 		}
 	}
 
-	function visible(element) {
-		const rect = element.getBoundingClientRect();
+	function visible(element, rect = element.getBoundingClientRect()) {
+		if (rect.width <= 0 || rect.height <= 0 || rect.bottom <= 0 || rect.right <= 0 ||
+			rect.top >= innerHeight || rect.left >= innerWidth) return false;
 		const style = getComputedStyle(element);
-		return rect.width > 0 && rect.height > 0 &&
-			style.visibility !== "hidden" &&
+		return style.visibility !== "hidden" &&
 			[...ancestors(element)].every(ancestor => {
 				const style = getComputedStyle(ancestor);
 				return style.display !== "none" && Number(style.opacity) > 0 &&
 					!ancestor.matches("[inert], [aria-hidden='true']");
-			}) &&
-			rect.bottom > 0 && rect.right > 0 &&
-			rect.top < innerHeight && rect.left < innerWidth;
+			});
+	}
+
+	function exposedPoint(element) {
+		if (!element.isConnected) return;
+		const rect = element.getBoundingClientRect();
+		if (!visible(element, rect)) return;
+		const left = Math.max(0, rect.left);
+		const top = Math.max(0, rect.top);
+		const right = Math.min(innerWidth, rect.right);
+		const bottom = Math.min(innerHeight, rect.bottom);
+		const midX = (left + right) / 2;
+		const midY = (top + bottom) / 2;
+		const insetX = Math.min(1, (right - left) / 4);
+		const insetY = Math.min(1, (bottom - top) / 4);
+
+		// Hit testing accounts for both overflow clipping and content painted on top.
+		for (const y of [top + insetY, midY, bottom - insetY]) {
+			for (const x of [midX, left + insetX, right - insetX]) {
+				let hit = document.elementFromPoint(x, y);
+				while (hit) {
+					for (const ancestor of ancestors(hit)) {
+						if (ancestor === element) return {x, y};
+					}
+					const inner = hit.shadowRoot?.elementFromPoint(x, y);
+					if (inner === hit) break;
+					hit = inner;
+				}
+			}
+		}
 	}
 
 	function activeModal(elements) {
@@ -70,21 +102,27 @@
 
 	function clickable(element) {
 		return !element.disabled && !element.readOnly && !element.hasAttribute("disabled") &&
-			element.getAttribute("aria-disabled") !== "true" &&
-			visible(element);
+			element.getAttribute("aria-disabled") !== "true";
 	}
 
-	function candidates(elements) {
+	function candidates(elements, forScroll) {
 		const selector = [
 			"a[href]", "area[href]", "button", editableSelector,
-			"[role=button]", "[role=link]",
+			"[role=button]", "[role=link]", "[role=treeitem]", "[role=tab]", "[role=option]",
+			"[role=menuitem]", "[role=menuitemcheckbox]", "[role=menuitemradio]",
 			"[tabindex]:not([tabindex='-1'])"
 		].join(",");
-		const matches = elements.filter(element => element.matches(selector) && clickable(element));
-		const candidates = new Set(matches);
-		return matches.filter(element => {
+		const targets = [];
+		for (const element of elements) {
+			if (!(forScroll ? scrollable(element) : element.matches(selector) && clickable(element))) continue;
+			const point = exposedPoint(element);
+			if (point) targets.push({element, point});
+		}
+		if (forScroll) return targets;
+		const matches = new Set(targets.map(({element}) => element));
+		return targets.filter(({element}) => {
 			for (const ancestor of ancestors(element)) {
-				if (ancestor !== element && candidates.has(ancestor) &&
+				if (ancestor !== element && matches.has(ancestor) &&
 					ancestor.matches("a[href],button,[role=button],[role=link]")) {
 					return false;
 				}
@@ -97,24 +135,23 @@
 		hints = [];
 		hintPrefix = "";
 		shadow.querySelectorAll(".hint").forEach(element => element.remove());
-		if (!scrollRefresh) host.hidePopover();
-	}
-
-	function showOverlay(modal) {
-		(modal || document.documentElement).append(host);
 		host.hidePopover();
-		host.showPopover();
 	}
 
-	function showHints() {
+	function showHints(forScroll = false) {
 		stopScroll();
-		clearHints();
+		if (scrollRefresh === undefined) clearHints();
+		else clearScrollOutline();
 		const rendered = [...renderedElements(document)];
 		const modal = activeModal(rendered);
-		const elements = candidates(modal ? [...renderedElements(modal)] : rendered);
-		if (!elements.length) return;
-		const labels = labelsFor(elements.length);
-		hints = elements.map((element, index) => ({
+		const scope = modal ? [...renderedElements(modal)] : rendered;
+		const targets = candidates(scope, forScroll);
+		scrollHints = forScroll;
+		const root = document.scrollingElement;
+		if (forScroll && !modal && root) targets.unshift({element: root, point: hintPoint(root)});
+		if (!targets.length) return;
+		const labels = labelsFor(targets.length);
+		hints = targets.map(({element}, index) => ({
 			element,
 			label: labels[index],
 			node: document.createElement("span")
@@ -123,47 +160,77 @@
 			hint.node.className = "hint";
 			shadow.append(hint.node);
 		}
-		showOverlay(modal);
-		positionHints();
+		const container = modal || document.documentElement;
+		if (host.parentElement !== container) container.append(host);
+		host.style.opacity = "0";
+		host.showPopover();
+		if (stylesheetReady) positionHints(targets.map(({point}) => point));
 	}
 
-	function positionHints() {
-		const placed = [];
-		for (const hint of hints) {
-			hint.node.hidden = !hint.label.startsWith(hintPrefix) ||
-				!hint.element.isConnected || !visible(hint.element);
-			hint.node.textContent = hint.label.slice(hintPrefix.length);
-			if (hint.node.hidden) continue;
-			const rect = hint.element.getBoundingClientRect();
-			const left = Math.max(0, Math.min(
-				rect.left + (rect.width - hint.node.offsetWidth) / 2,
-				innerWidth - hint.node.offsetWidth
-			));
-			let top = Math.max(0, Math.min(rect.top, innerHeight - hint.node.offsetHeight));
-			while (placed.some(other => left < other.right && left + hint.node.offsetWidth > other.left &&
-				top < other.bottom && top + hint.node.offsetHeight > other.top) &&
-				top + hint.node.offsetHeight < innerHeight) {
-				top += hint.node.offsetHeight + 2;
-			}
-			hint.node.style.top = `${top}px`;
-			hint.node.style.left = `${left}px`;
-			placed.push({
-				left, top,
-				right: left + hint.node.offsetWidth,
-				bottom: top + hint.node.offsetHeight
-			});
+	function positionHints(initialPoints) {
+		if (!stylesheetReady || !hints.length) return;
+		const points = initialPoints ?? hints.map(hint => hint.label.startsWith(hintPrefix) && hintPoint(hint.element));
+		for (const [index, {node, label}] of hints.entries()) {
+			const hidden = !points[index];
+			if (node.hidden !== hidden) node.hidden = hidden;
+			if (hidden) continue;
+			const text = label.slice(hintPrefix.length);
+			if (node.textContent !== text) node.textContent = text;
 		}
+		const placed = [];
+		for (const [index, {node}] of hints.entries()) {
+			const point = points[index];
+			if (!point) continue;
+			const {offsetWidth: width, offsetHeight: height} = node;
+			const left = Math.max(0, Math.min(
+				point.x - width / 2,
+				innerWidth - width
+			));
+			let top = Math.max(0, Math.min(point.y, innerHeight - height));
+			while (placed.some(other => left < other.right && left + width > other.left &&
+				top < other.bottom && top + height > other.top) &&
+				top + 2 * height + 2 <= innerHeight) {
+				top += height + 2;
+			}
+			placed.push({node, left, top, right: left + width, bottom: top + height});
+		}
+		for (const {node, top, left} of placed) {
+			node.style.top = `${top}px`;
+			node.style.left = `${left}px`;
+		}
+		host.style.opacity = "";
+	}
+
+	function scheduleHintPosition() {
+		if (!stylesheetReady || !hints.length || hintFramePending) return;
+		hintFramePending = true;
+		requestAnimationFrame(() => {
+			hintFramePending = false;
+			positionHints();
+		});
+	}
+
+	function hintPoint(element) {
+		if (scrollHints && element === document.scrollingElement) return {x: innerWidth / 2, y: 0};
+		return exposedPoint(element);
 	}
 
 	function chooseHint(label) {
+		if (!stylesheetReady) return;
 		const remaining = hints.filter(hint => hint.label.startsWith(label));
 		if (!remaining.length) {
 			clearHints();
 		} else if (remaining.length === 1 && remaining[0].label === label) {
 			const element = remaining[0].element;
 			clearHints();
-			if (editable(element)) element.focus();
-			element.click();
+			if (!hintPoint(element)) return;
+			if (scrollHints) {
+				scrollTarget = element;
+				showScrollOutline(element);
+			} else {
+				if (editable(element)) element.focus();
+				element.click();
+			}
 		} else {
 			hintPrefix = label;
 			positionHints();
@@ -171,55 +238,36 @@
 	}
 
 	function scrollable(element) {
-		if (element === document.body || element === document.documentElement) return false;
+		if (element === document.body || element === document.scrollingElement) return false;
 		const style = getComputedStyle(element);
 		return (/(auto|scroll|overlay)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1) ||
 			(/(auto|scroll|overlay)/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 1);
 	}
 
-	function getScrollTargets() {
-		const root = document.scrollingElement;
-		const nested = [...document.querySelectorAll("*")]
-			.filter(element => scrollable(element) && visible(element));
-		return [root, ...nested].filter(Boolean);
-	}
-
-	function clearScrollTarget() {
-		clearTimeout(scrollRefresh);
-		scrollRefresh = undefined;
-		shadow.querySelectorAll(".scroll-target, .scroll-label").forEach(element => element.remove());
-		if (!hints.length) host.hidePopover();
-	}
-
-	function showScrollTarget(element, index, total) {
-		clearScrollTarget();
-		const rect = element === document.scrollingElement
+	function scrollRect(element) {
+		return element === document.scrollingElement
 			? {top: 0, left: 0, width: innerWidth, height: innerHeight}
 			: element.getBoundingClientRect();
+	}
+
+	function clearScrollOutline() {
+		clearTimeout(scrollRefresh);
+		scrollRefresh = undefined;
+		shadow.querySelectorAll(".scroll-target").forEach(element => element.remove());
+		host.hidePopover();
+	}
+
+	function showScrollOutline(element) {
+		const rect = scrollRect(element);
 		const outline = document.createElement("div");
 		outline.className = "scroll-target";
 		Object.assign(outline.style, {
 			top: `${rect.top}px`, left: `${rect.left}px`,
 			width: `${rect.width}px`, height: `${rect.height}px`
 		});
-		const label = document.createElement("div");
-		label.className = "scroll-label";
-		label.textContent = `Scroll area ${index + 1} of ${total}`;
-		label.style.top = `${Math.max(0, rect.top)}px`;
-		label.style.left = `${Math.max(0, rect.left)}px`;
-		shadow.append(outline, label);
-		showOverlay(activeModal([...renderedElements(document)]));
-		scrollRefresh = setTimeout(clearScrollTarget, 700);
-	}
-
-	function cycleScrollTarget() {
-		stopScroll();
-		const previous = scrollTargets?.[scrollIndex];
-		scrollTargets = getScrollTargets();
-		const next = nextScrollTarget(scrollTargets, previous);
-		scrollIndex = next.index;
-		const target = next.target;
-		if (target) showScrollTarget(target, scrollIndex, scrollTargets.length);
+		shadow.append(outline);
+		host.showPopover();
+		scrollRefresh = setTimeout(clearScrollOutline, 700);
 	}
 
 	function stopScroll() {
@@ -241,9 +289,9 @@
 			const distance = speed * elapsed + (motion.velocity - speed) * scrollEaseMs * (1 - decay);
 			motion.velocity = speed + (motion.velocity - speed) * decay;
 			motion.last = end;
-			motion.target.scrollBy({top: distance / 1000, behavior: "instant"});
+			motion.target.scrollBy({[motion.axis]: distance / 1000, behavior: "instant"});
 		}
-		if (motion.last < motion.release) advance(Math.min(time, motion.release), motion.direction * scrollSpeed);
+		if (motion.last < motion.release) advance(Math.min(time, motion.release), motion.speed);
 		if (time > motion.release) advance(time, 0);
 		if (time >= motion.release && Math.abs(motion.velocity) < 2) {
 			stopScroll();
@@ -252,18 +300,22 @@
 		}
 	}
 
-	function scroll(key) {
-		if (!scrollTargets || !scrollTargets[scrollIndex]?.isConnected) {
-			scrollTargets = getScrollTargets();
-			scrollIndex = 0;
-		}
-		const target = scrollTargets[scrollIndex] || document.scrollingElement;
+	function scroll(key, fast) {
+		if (!scrollTarget?.isConnected) scrollTarget = undefined;
+		const target = scrollTarget || document.scrollingElement;
 		if (!target) return;
+		const vertical = key === "j" || key === "k";
+		const axis = vertical ? "top" : "left";
+		let speed = scrollSpeed;
+		if (fast && vertical) {
+			const height = target === document.scrollingElement ? innerHeight : target.clientHeight;
+			speed = Math.max(2 * scrollSpeed, height * 1000 / (3 * scrollTapMs));
+		}
 		const now = performance.now();
-		if (scrollMotion?.target !== target) stopScroll();
-		if (!scrollMotion) scrollMotion = {target, velocity: 0, last: now};
+		if (scrollMotion && (scrollMotion.target !== target || scrollMotion.axis !== axis)) stopScroll();
+		if (!scrollMotion) scrollMotion = {target, axis, velocity: 0, last: now};
 		Object.assign(scrollMotion, {
-			key, direction: key === "j" ? 1 : -1,
+			key, speed: (key === "j" || key === "l" ? 1 : -1) * speed,
 			minimumUntil: now + scrollTapMs, release: Infinity
 		});
 		if (scrollFrame === undefined) scrollFrame = requestAnimationFrame(animateScroll);
@@ -278,8 +330,8 @@
 				clearHints();
 			} else if (event.key === "Backspace") {
 				chooseHint(hintPrefix.slice(0, -1));
-			} else if (alphabet.includes(event.key.toUpperCase())) {
-				chooseHint(hintPrefix + event.key.toUpperCase());
+			} else if (event.key.length === 1 && alphabet.includes(event.key.toUpperCase())) {
+				if (!event.repeat) chooseHint(hintPrefix + event.key.toUpperCase());
 			} else {
 				clearHints();
 				return;
@@ -289,12 +341,13 @@
 			return;
 		}
 
-		if (event.key === "s" || event.key === "S") {
+		const key = event.key.toLowerCase();
+		if (key === "s") {
 			showHints();
-		} else if (event.key === "j" || event.key === "k") {
-			if (!event.repeat) scroll(event.key);
-		} else if (event.key.toLowerCase() === "c" && event.shiftKey) {
-			cycleScrollTarget();
+		} else if (/^[hjkl]$/.test(event.key) || (event.shiftKey && /^[jk]$/.test(key))) {
+			if (!event.repeat) scroll(key, event.shiftKey);
+		} else if (key === "c" && event.shiftKey) {
+			if (!event.repeat) showHints(true);
 		} else {
 			return;
 		}
@@ -316,10 +369,6 @@
 	addEventListener("blur", stopScroll);
 	addEventListener("pagehide", stopScroll);
 
-	addEventListener("scroll", () => {
-		if (hints.length) requestAnimationFrame(positionHints);
-	}, true);
-	addEventListener("resize", () => {
-		if (hints.length) positionHints();
-	});
+	addEventListener("scroll", scheduleHintPosition, true);
+	addEventListener("resize", scheduleHintPosition);
 })();

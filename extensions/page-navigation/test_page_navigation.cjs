@@ -24,21 +24,6 @@ test("hint labels are unique fixed-width prefixes for any candidate count", () =
 	}
 });
 
-test("scroll target cycling follows the current target and recovers if it disappears", () => {
-	const page = {};
-	const first = {};
-	const second = {};
-	let next = algorithms.nextScrollTarget([page, first, second], page);
-	assert.equal(next.target, first);
-	assert.equal(next.index, 1);
-	next = algorithms.nextScrollTarget([page, second], first);
-	assert.equal(next.target, page);
-	assert.equal(next.index, 0);
-	next = algorithms.nextScrollTarget([], page);
-	assert.equal(next.target, undefined);
-	assert.equal(next.index, 0);
-});
-
 test("hint sessions keep stable targets and focus editable selections", () => {
 	const nodes = [];
 	const listeners = {};
@@ -49,6 +34,7 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 	let scans = 0;
 	let modal;
 	let overlayOpen = false;
+	let overlay;
 	const shadow = {
 		append(node) { nodes.push(node); },
 		querySelectorAll() { return nodes.filter(node => node.className === "hint"); }
@@ -63,16 +49,24 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 		hasAttribute() { return false; },
 		getAttribute() { return null; },
 		closest() { return null; },
-		getBoundingClientRect() { return this.rect || rect; },
+		getBoundingClientRect() {
+			return this.rect || {...rect, top: rect.top + index * 24, bottom: rect.bottom + index * 24};
+		},
 		click() { clicked = index; }
 	}));
 	const document = {
 		documentElement: {append() {}},
+		elementFromPoint(x, y) {
+			return targets.find(target => {
+				const {left, right, top, bottom} = target.getBoundingClientRect();
+				return x >= left && x < right && y >= top && y < bottom;
+			});
+		},
 		createElement() {
 			return {
 				style: {}, offsetWidth: 20, offsetHeight: 16,
 				attachShadow() { return shadow; },
-				showPopover() { overlayOpen = true; },
+				showPopover() { overlayOpen = true; overlay = this; },
 				hidePopover() { overlayOpen = false; },
 				addEventListener(type, callback) { stylesheetLoaded = callback; },
 				remove() { nodes.splice(nodes.indexOf(this), 1); }
@@ -102,7 +96,7 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 		closest(selector) { return selector.includes("input") ? this : null; }
 	};
 	const shadowHost = {closest() { return null; }};
-	for (const shortcut of ["s", "S", "j", "k", "C"]) {
+	for (const shortcut of ["s", "S", "j", "k", "h", "l", "C"]) {
 		key(shortcut, input);
 		key(shortcut, shadowHost, [input, {}, shadowHost, document]);
 	}
@@ -115,6 +109,14 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 	assert.equal(prevented, 1);
 	assert.equal(stopped, 1);
 	const original = hints();
+	assert.equal(overlay.style.opacity, "0");
+	assert.equal(original[0].style.top, undefined);
+	key("s");
+	assert.equal(clicked, undefined);
+	targets[0].rect = {...rect, top: 10, bottom: 30};
+	stylesheetLoaded();
+	assert.equal(overlay.style.opacity, "");
+	assert.equal(original[0].style.top, "11px");
 	key("s");
 	assert.equal(original.filter(node => !node.hidden).length, 2);
 	targets[0].isConnected = false;
@@ -123,7 +125,6 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 	listeners.scroll();
 	frames.shift()();
 	listeners.resize();
-	stylesheetLoaded();
 	assert.equal(scans, 1);
 	assert.deepEqual(hints(), original);
 	assert.equal(original[15].hidden, true);
@@ -184,13 +185,29 @@ function shadowPage() {
 	const movements = [];
 	let now = 0;
 	let frameId = 0;
+	let stylesheetLoaded;
+	let elementIndex = 0;
 	const clicked = [];
 	const rect = {top: 20, left: 20, width: 100, height: 20, right: 120, bottom: 40};
 	const document = {
 		children: [],
-		querySelectorAll() { return this.scrollAreas || []; },
+		elementFromPoint(x, y) { return hitAt(this, x, y); },
 		addEventListener(type, callback) { listeners[type] = callback; }
 	};
+	function hitAt(root, x, y) {
+		if (root.style?.overflow === "hidden") {
+			const {left, right, top, bottom} = root.getBoundingClientRect();
+			if (x < left || x >= right || y < top || y >= bottom) return;
+		}
+		const children = root.assigned?.length ? root.assigned : root.children;
+		for (const node of [...children].reverse()) {
+			if (node.id === "page-navigation-host" || !node.isConnected || node.style.display === "none") continue;
+			const hit = hitAt(node.shadowRoot || node, x, y);
+			if (hit) return node.shadowRoot ? node : hit;
+			const {left, right, top, bottom} = node.getBoundingClientRect();
+			if (x >= left && x < right && y >= top && y < bottom) return node;
+		}
+	}
 	function container(properties = {}) {
 		return Object.defineProperties({
 			children: [],
@@ -208,6 +225,7 @@ function shadowPage() {
 		}, Object.getOwnPropertyDescriptors(properties));
 	}
 	function element(localName, attributes = {}, name = localName) {
+		const offset = elementIndex++ * 24;
 		return container({
 			nodeType: 1, localName, attributes, style: {},
 			isConnected: true, offsetWidth: 20, offsetHeight: 16,
@@ -224,7 +242,7 @@ function shadowPage() {
 					return "inert" in attributes || attributes["aria-hidden"] === "true";
 				}
 				const action = localName === "button" || (localName === "a" && "href" in attributes) ||
-					["button", "link"].includes(attributes.role);
+					("role" in attributes && selector.includes(`[role=${attributes.role}]`));
 				return action || (selector.includes("area[href]") &&
 					(["input", "textarea", "select"].includes(localName) ||
 						("tabindex" in attributes && attributes.tabindex !== "-1")));
@@ -232,10 +250,12 @@ function shadowPage() {
 			closest() { return null; },
 			hasAttribute(attribute) { return attribute in attributes; },
 			getAttribute(attribute) { return attributes[attribute] ?? null; },
-			getBoundingClientRect() { return rect; },
-			attachShadow() { return this.shadowRoot = container({host: this}); },
+			getBoundingClientRect() { return this.rect || {...rect, top: rect.top + offset, bottom: rect.bottom + offset}; },
+			attachShadow() {
+				return this.shadowRoot = container({host: this, elementFromPoint(x, y) { return hitAt(this, x, y); }});
+			},
 			assignedNodes() { return this.assigned || []; },
-			addEventListener() {},
+			addEventListener(type, callback) { if (type === "load") stylesheetLoaded = callback; },
 			showPopover() {},
 			hidePopover() {},
 			click() { clicked.push(name); },
@@ -265,6 +285,7 @@ function shadowPage() {
 		setTimeout() { return 1; },
 		clearTimeout() {}
 	});
+	stylesheetLoaded();
 	const overlay = document.documentElement.children[0];
 	function key(key, type = "keydown", properties = {}) {
 		const event = {
@@ -301,6 +322,87 @@ function shadowPage() {
 		}
 	};
 }
+
+test("click hints include roving-tabindex ARIA controls and their independent buttons", () => {
+	const page = shadowPage();
+	const tree = page.element("div", {role: "tree"});
+	const chat = page.element("div", {role: "treeitem", tabindex: "-1"}, "chat");
+	chat.append(page.element("span", {role: "text"}), page.element("button", {}, "overflow"));
+	tree.append(chat, page.element("div", {role: "treeitem", tabindex: "-1", "aria-disabled": "true"}));
+	const roles = ["tab", "option", "menuitem", "menuitemcheckbox", "menuitemradio"];
+	page.document.documentElement.append(tree, ...roles.map(role =>
+		page.element("div", {role, tabindex: "-1"}, role)
+	));
+	assert.deepEqual(page.targets(), ["chat", "overflow", ...roles]);
+});
+
+test("hint placement reuses discovery hits and batches viewport updates", () => {
+	const page = shadowPage();
+	page.document.documentElement.append(page.element("button"), page.element("button"));
+	const hit = page.document.elementFromPoint.bind(page.document);
+	let hitCount = 0;
+	page.document.elementFromPoint = (x, y) => {
+		hitCount++;
+		return hit(x, y);
+	};
+	page.key("s");
+	assert.equal(hitCount, 2);
+	const operations = [];
+	for (const hint of page.overlay.shadowRoot.querySelectorAll(".hint")) {
+		const text = hint.textContent;
+		Object.defineProperty(hint, "textContent", {
+			get: () => text,
+			set: () => operations.push("text write")
+		});
+		Object.defineProperty(hint, "offsetWidth", {
+			get() { operations.push("measure"); return 20; }
+		});
+		Object.defineProperty(hint.style, "top", {set: () => operations.push("position write")});
+	}
+	page.emit("scroll");
+	page.emit("resize");
+	page.emit("scroll");
+	assert.equal(page.frames.size, 1);
+	assert.equal(hitCount, 2);
+	page.advance(10);
+	assert.equal(hitCount, 4);
+	assert.deepEqual(operations, ["measure", "measure", "position write", "position write"]);
+});
+
+test("hints skip clipped and covered rows and keep their labels as exposure changes", () => {
+	const page = shadowPage();
+	const bounds = (top, bottom) => ({top, bottom, height: bottom - top, left: 10, right: 110, width: 100});
+	const panel = page.element("div");
+	panel.rect = bounds(20, 100);
+	panel.style.overflow = "hidden";
+	const [covered, partial, clipped] = ["covered", "partial", "clipped"].map(name =>
+		page.element("div", {role: "treeitem", tabindex: "-1"}, name)
+	);
+	covered.rect = bounds(40, 60);
+	partial.rect = bounds(80, 110);
+	clipped.rect = bounds(110, 135);
+	panel.append(covered, partial, clipped);
+	const cover = page.element("div");
+	cover.rect = bounds(35, 94);
+	page.document.documentElement.append(panel, cover);
+	assert.deepEqual(page.targets(), ["partial"]);
+
+	page.key("s");
+	const [hint] = page.overlay.shadowRoot.querySelectorAll(".hint");
+	assert.equal(hint.style.top, "95px");
+	cover.rect = bounds(35, 100);
+	page.emit("scroll");
+	page.advance(10);
+	assert.equal(hint.hidden, true);
+	cover.rect = bounds(35, 94);
+	page.emit("scroll");
+	page.advance(10);
+	assert.equal(hint.hidden, false);
+	assert.equal(hint.textContent, "A");
+	partial.click = () => assert.fail("a newly covered target must not activate");
+	cover.rect = bounds(35, 100);
+	page.key("a");
+});
 
 test("hints enter open shadow roots and deduplicate slotted controls", () => {
 	const page = shadowPage();
@@ -432,6 +534,37 @@ test("held scrolling is frame-rate independent and ignores keyboard repeat", () 
 	assert.ok(Math.abs(hold(5, false) - hold(20, true)) < 0.1);
 });
 
+test("horizontal scrolling matches vertical easing for taps and holds", () => {
+	function movements(key, axis, heldMs) {
+		const page = shadowPage();
+		page.key(key);
+		page.advance(heldMs);
+		page.key(key, "keyup");
+		page.advance(600);
+		assert.equal(page.frames.size, 0);
+		const otherAxis = axis === "top" ? "left" : "top";
+		assert.ok(page.movements.every(move => axis in move && !(otherAxis in move)));
+		return page.movements.map(move => move[axis]);
+	}
+	assert.deepEqual(movements("l", "left", 0), movements("j", "top", 0));
+	assert.deepEqual(movements("h", "left", 400), movements("k", "top", 400));
+});
+
+test("shifted vertical scrolling moves about a third of the target height and holds at higher speed", () => {
+	const page = shadowPage();
+	page.key("J", "keydown", {shiftKey: true});
+	page.key("j", "keyup"); // Shift was released first.
+	page.advance(650);
+	const distance = page.movements.reduce((sum, move) => sum + move.top, 0);
+	assert.ok(Math.abs(distance - 1000 / 3) < 1);
+	page.key("K", "keydown", {shiftKey: true});
+	page.advance(500);
+	assert.ok(page.movements.at(-1).top < -27);
+	page.key("K", "keyup", {shiftKey: true});
+	page.advance(650);
+	assert.equal(page.frames.size, 0);
+});
+
 test("direction changes and a new press during deceleration preserve velocity", () => {
 	const page = shadowPage();
 	page.key("j");
@@ -462,6 +595,7 @@ test("scrolling stops on lost focus, hidden pages, editable focus, hints, or tar
 		page => { page.document.hidden = true; page.emit("visibilitychange"); },
 		page => page.emit("focusin", {composedPath: () => [{closest: () => true}]}),
 		page => page.key("s"),
+		page => page.key("C"),
 		page => { page.document.scrollingElement.isConnected = false; page.advance(10); }
 	]) {
 		const page = shadowPage();
@@ -478,27 +612,53 @@ test("scrolling stops on lost focus, hidden pages, editable focus, hints, or tar
 	assert.equal(page.frames.size, 0);
 });
 
-test("scroll target cycling cancels motion and subsequent presses use the selected area", () => {
+test("scroll hints select without clicking, cancel without changing selection, and include the page", () => {
 	const page = shadowPage();
-	const area = page.element("div");
+	const host = page.element("scroll-area");
+	const area = page.element("button");
 	area.style.overflowY = "auto";
-	area.scrollHeight = 1000;
-	area.clientHeight = 100;
+	area.style.overflowX = "auto";
+	area.scrollHeight = 2000;
+	area.clientHeight = 900;
+	area.scrollWidth = 500;
+	area.clientWidth = 100;
+	area.click = () => assert.fail("a scroll hint must not click its target");
 	const nestedMovements = [];
-	area.scrollBy = options => nestedMovements.push(options.top);
-	page.document.documentElement.append(area);
-	page.document.scrollAreas = [area];
-	page.key("j");
-	page.advance(200);
+	area.scrollBy = options => nestedMovements.push(options);
+	host.attachShadow().append(area);
+	page.document.documentElement.append(host);
+	const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint").map(hint => hint.textContent);
+	const outline = () => page.overlay.shadowRoot.querySelectorAll(".scroll-target");
 	page.key("C");
-	assert.equal(page.frames.size, 0);
-	const count = page.movements.length;
+	assert.deepEqual(hints(), ["A", "S"]);
+	page.key("s");
+	assert.deepEqual(hints(), []);
+	assert.equal(outline().length, 1);
+	page.key("C");
+	page.key("Escape");
+	assert.deepEqual(hints(), []);
+	assert.equal(outline().length, 0);
+	page.key("J", "keydown", {shiftKey: true});
 	page.key("j", "keyup");
-	page.key("j");
-	page.advance(200);
-	assert.ok(nestedMovements.length > 0);
-	assert.equal(page.movements.length, count);
-	page.key("j", "keyup");
-	page.advance(500);
-	assert.equal(page.frames.size, 0);
+	page.advance(650);
+	const distance = nestedMovements.reduce((sum, move) => sum + move.top, 0);
+	assert.ok(Math.abs(distance - 300) < 1);
+	page.key("h");
+	page.advance(100);
+	assert.ok(nestedMovements.at(-1).left < 0);
+	assert.equal(page.movements.length, 0);
+
+	page.key("C");
+	page.key("a");
+	page.key("l");
+	page.advance(100);
+	assert.ok(page.movements.at(-1).left > 0);
+	assert.equal(outline()[0].style.width, "1000px");
+
+	page.key("C");
+	page.key("s");
+	area.isConnected = false;
+	page.key("k");
+	page.advance(100);
+	assert.ok(page.movements.at(-1).top < 0);
 });

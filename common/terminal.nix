@@ -17,6 +17,7 @@ with pkgs;
   ocamlPackages.lsp
   ocamlPackages.utop
 
+  pandoc
   nushell
   topiary
   carapace
