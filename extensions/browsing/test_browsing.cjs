@@ -45,17 +45,44 @@ test("NSFW metadata supports post and community fields and rejects unknown data"
 	assert.throws(() => logic.nsfwMetadata({data: {over18: "false"}}), /Missing NSFW metadata/);
 });
 
-function page({url = redirects[0].to, metadata = {data: {over18: false}}, failed = false, gate = false, markers = []} = {}) {
+test("worker only relays top-level Reddit navigation to the content script", async () => {
+	const listeners = [];
+	const messages = [];
+	const sandbox = vm.createContext({URL, chrome: {
+		webNavigation: {
+			onHistoryStateUpdated: {addListener: listener => listeners.push(listener)},
+			onReferenceFragmentUpdated: {addListener: listener => listeners.push(listener)},
+		},
+		tabs: {sendMessage: (tabId, message) => {
+			messages.push({tabId, type: message.type});
+			return Promise.reject(new Error("No receiver"));
+		}},
+	}});
+	vm.runInContext(source("background.js"), sandbox);
+	assert.equal(listeners.length, 2);
+	for (const listener of listeners) {
+		listener({frameId: 0, tabId: 42, url: "https://www.reddit.com/?feed=home"});
+		listener({frameId: 1, tabId: 42, url: "https://www.reddit.com/"});
+		listener({frameId: 0, tabId: 42, url: "https://www.reddit.com.evil.example/"});
+	}
+	assert.deepEqual(messages, [
+		{tabId: 42, type: "browsing-navigation"},
+		{tabId: 42, type: "browsing-navigation"},
+	]);
+	await flush();
+});
+
+function page({url = redirects[0].to, metadata = {data: {over18: false}}, failed = false, gate = false, markers = [], rootPresent = true} = {}) {
 	const attributes = new Set();
 	const navigations = [];
 	let observer;
 	let message;
 	const location = {href: url, replace: target => navigations.push(target)};
+	const root = {
+		toggleAttribute: (name, present) => present ? attributes.add(name) : attributes.delete(name),
+	};
 	const document = {
-		documentElement: {
-			setAttribute: name => attributes.add(name),
-			removeAttribute: name => attributes.delete(name),
-		},
+		documentElement: rootPresent ? root : null,
 		querySelector: () => gate ? {} : null,
 		querySelectorAll: () => markers,
 	};
@@ -79,7 +106,12 @@ function page({url = redirects[0].to, metadata = {data: {over18: false}}, failed
 	});
 	vm.runInContext(source("logic.js"), sandbox);
 	vm.runInContext(source("content.js"), sandbox);
-	return {attributes, navigations, location, mutate: () => observer(), message: () => message({type: "browsing-navigation"})};
+	return {
+		attributes, navigations, location,
+		mutate: () => observer(),
+		message: () => message({type: "browsing-navigation"}),
+		attachRoot() {document.documentElement = root; observer();},
+	};
 }
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -96,16 +128,28 @@ test("marked cards are removed rather than blurred, including inserted cards", (
 
 test("direct NSFW community blocks without a reveal action", async () => {
 	const current = page({url: "https://www.reddit.com/r/example/", metadata: {data: {over18: true}}});
-	assert.equal(current.attributes.has("data-browsing-checking"), true);
+	assert.equal(current.attributes.has("data-browsing-ready"), false);
 	await flush();
 	assert.deepEqual(current.navigations, ["chrome-extension://boundaries/blocked.html"]);
+	assert.equal(current.attributes.has("data-browsing-ready"), false);
 });
 
 test("verified safe community becomes visible", async () => {
 	const current = page({url: "https://www.reddit.com/r/example/"});
 	await flush();
-	assert.equal(current.attributes.has("data-browsing-checking"), false);
+	assert.equal(current.attributes.has("data-browsing-ready"), true);
 	assert.deepEqual(current.navigations, []);
+});
+
+test("late document roots stay hidden until verification completes", async () => {
+	const current = page({url: "https://www.reddit.com/r/example/", rootPresent: false});
+	current.attachRoot();
+	assert.equal(current.attributes.has("data-browsing-ready"), false);
+	await flush();
+	assert.equal(current.attributes.has("data-browsing-ready"), true);
+	const feed = page({rootPresent: false});
+	feed.attachRoot();
+	assert.equal(feed.attributes.has("data-browsing-ready"), true);
 });
 
 test("metadata failure and malformed responses fail closed", async () => {
@@ -113,6 +157,7 @@ test("metadata failure and malformed responses fail closed", async () => {
 		const current = page({url: "https://www.reddit.com/r/example/", ...options});
 		await flush();
 		assert.deepEqual(current.navigations, ["chrome-extension://boundaries/blocked.html"]);
+		assert.equal(current.attributes.has("data-browsing-ready"), false);
 	}
 });
 
@@ -126,6 +171,7 @@ test("SPA navigation redirects home and checks newly visited communities", async
 	home.location.href = "https://www.reddit.com/?feed=home";
 	home.message();
 	assert.deepEqual(home.navigations, [redirects[0].to]);
+	assert.equal(home.attributes.has("data-browsing-ready"), false);
 	const community = page({metadata: {data: {over18: true}}});
 	community.location.href = "https://www.reddit.com/r/example/";
 	community.message();
@@ -139,7 +185,7 @@ test("stale metadata cannot block a subsequent safe navigation", async () => {
 	current.message();
 	await flush();
 	assert.deepEqual(current.navigations, []);
-	assert.equal(current.attributes.has("data-browsing-checking"), false);
+	assert.equal(current.attributes.has("data-browsing-ready"), true);
 });
 
 test("manifest exposes no action, options, or reveal controls", () => {

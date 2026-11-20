@@ -12,7 +12,6 @@ shreddit-content-gate[reason="over18"] {
 	display: none !important;
 }
 
-html:not([data-browsing-ready]),
-html[data-browsing-checking] {
+html:not([data-browsing-ready]) {
 	visibility: hidden !important;
 }

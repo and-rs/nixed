@@ -21,21 +21,17 @@
 	let lastURL;
 	let generation = 0;
 	let scheduled = false;
-	let checking = false;
+	let ready = false;
 
-	function setChecking(value) {
-		checking = value;
-		const root = document.documentElement;
-		if (!root) return;
-		if (value) root.setAttribute("data-browsing-checking", "");
-		else root.removeAttribute("data-browsing-checking");
-		root.setAttribute("data-browsing-ready", "");
+	function setReady(value) {
+		ready = value;
+		document.documentElement?.toggleAttribute("data-browsing-ready", value);
 	}
 
 	function block() {
 		if (blocked) return;
 		blocked = true;
-		setChecking(true);
+		setReady(false);
 		location.replace(chrome.runtime.getURL("blocked.html"));
 	}
 
@@ -46,16 +42,16 @@
 		const current = ++generation;
 		const target = Browsing.redirect(url, browsingConfig.redirects);
 		if (target) {
-			setChecking(true);
+			setReady(false);
 			location.replace(target);
 			return;
 		}
 		const metadata = Browsing.metadataURL(url);
 		if (!metadata) {
-			setChecking(false);
+			setReady(true);
 			return;
 		}
-		setChecking(true);
+		setReady(false);
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 10000);
 		try {
@@ -64,7 +60,7 @@
 			const nsfw = Browsing.nsfwMetadata(await response.json());
 			if (current !== generation || location.href !== url) return;
 			if (nsfw) block();
-			else if (!blocked) setChecking(false);
+			else if (!blocked) setReady(true);
 		} catch {
 			// No reveal/retry bypass when Reddit cannot provide trustworthy metadata.
 			if (current === generation && location.href === url) block();
@@ -76,7 +72,7 @@
 	function filter() {
 		scheduled = false;
 		if (blocked) return;
-		setChecking(checking);
+		setReady(ready);
 		checkNavigation();
 		if (document.querySelector(gates)) {
 			block();

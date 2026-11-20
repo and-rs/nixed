@@ -1,4 +1,3 @@
-import copy
 import json
 import re
 import subprocess
@@ -36,6 +35,23 @@ def fixture():
             "duckduckgo_ips": ["191.235.126.53"],
         },
     }
+
+
+def source_snapshots():
+    return [
+        "\n".join(f"engine-{index}.example" for index in range(100)),
+        json.dumps(
+            {
+                "instances": [
+                    {"url": f"https://redlib-{index}.example"} for index in range(3)
+                ]
+            }
+        ),
+        "\n".join(
+            f"google.{chr(97 + index // 26)}{chr(97 + index % 26)}"
+            for index in range(100)
+        ),
+    ]
 
 
 class RulesTests(unittest.TestCase):
@@ -133,34 +149,49 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(output.read_text(), "new")
             self.assertEqual(len(list(Path(directory).iterdir())), 1)
 
-    def test_failed_refresh_preserves_manual_rules(self):
-        rules = fixture()
-        original = copy.deepcopy(rules)
-        with (
-            patch("rules.download", side_effect=OSError("Offline")),
-            self.assertRaises(OSError),
-        ):
-            refresh(rules)
-        self.assertEqual(rules, original)
+    def test_late_refresh_failure_preserves_encrypted_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            encrypted = Path(directory) / "browsing.age"
+            original = b"previous encrypted rules"
+            encrypted.write_bytes(original)
+            args = [
+                "rules.py",
+                "--encrypted",
+                str(encrypted),
+                "--extension-source",
+                "/unused",
+                "refresh",
+                "--recipient",
+                "test-recipient",
+            ]
+            with (
+                patch("sys.argv", args),
+                patch(
+                    "rules.subprocess.run",
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, stdout=json.dumps(fixture()).encode()
+                    ),
+                ) as decrypt,
+                patch(
+                    "rules.download",
+                    side_effect=[
+                        *source_snapshots()[:2],
+                        OSError("Google domain download failed"),
+                    ],
+                ) as download,
+                self.assertRaises(OSError),
+            ):
+                main()
+            self.assertEqual(download.call_count, 3)
+            decrypt.assert_called_once()
+            self.assertEqual(encrypted.read_bytes(), original)
 
     def test_refresh_preserves_reviewed_search_engine_blocks(self):
         rules = fixture()
         reviewed = {"domains": ["search.example"], "updated": "2026-11-17"}
         rules["sources"]["reviewed_search"] = reviewed
-        engines = "\n".join(f"engine-{index}.example" for index in range(100))
-        redlib = json.dumps(
-            {
-                "instances": [
-                    {"url": f"https://redlib-{index}.example"} for index in range(3)
-                ]
-            }
-        )
-        google = "\n".join(
-            f"google.{chr(97 + index // 26)}{chr(97 + index % 26)}"
-            for index in range(100)
-        )
         with (
-            patch("rules.download", side_effect=[engines, redlib, google]),
+            patch("rules.download", side_effect=source_snapshots()),
             patch("rules.safe_addresses", return_value=["1.1.1.3"]),
         ):
             updated = refresh(rules)
