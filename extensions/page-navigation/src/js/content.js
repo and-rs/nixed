@@ -309,7 +309,7 @@
 		let speed = scrollSpeed;
 		if (fast && vertical) {
 			const height = target === document.scrollingElement ? innerHeight : target.clientHeight;
-			speed = Math.max(2 * scrollSpeed, height * 1000 / (3 * scrollTapMs));
+			speed = Math.max(2 * scrollSpeed, height * 1000 / (2 * scrollTapMs));
 		}
 		const now = performance.now();
 		if (scrollMotion && (scrollMotion.target !== target || scrollMotion.axis !== axis)) stopScroll();

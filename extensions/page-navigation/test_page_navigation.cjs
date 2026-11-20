@@ -550,16 +550,16 @@ test("horizontal scrolling matches vertical easing for taps and holds", () => {
 	assert.deepEqual(movements("h", "left", 400), movements("k", "top", 400));
 });
 
-test("shifted vertical scrolling moves about a third of the target height and holds at higher speed", () => {
+test("shifted vertical scrolling moves about half the target height and holds at higher speed", () => {
 	const page = shadowPage();
 	page.key("J", "keydown", {shiftKey: true});
 	page.key("j", "keyup"); // Shift was released first.
 	page.advance(650);
 	const distance = page.movements.reduce((sum, move) => sum + move.top, 0);
-	assert.ok(Math.abs(distance - 1000 / 3) < 1);
+	assert.ok(Math.abs(distance - 500) < 1);
 	page.key("K", "keydown", {shiftKey: true});
 	page.advance(500);
-	assert.ok(page.movements.at(-1).top < -27);
+	assert.ok(page.movements.at(-1).top < -41);
 	page.key("K", "keyup", {shiftKey: true});
 	page.advance(650);
 	assert.equal(page.frames.size, 0);
@@ -642,7 +642,7 @@ test("scroll hints select without clicking, cancel without changing selection, a
 	page.key("j", "keyup");
 	page.advance(650);
 	const distance = nestedMovements.reduce((sum, move) => sum + move.top, 0);
-	assert.ok(Math.abs(distance - 300) < 1);
+	assert.ok(Math.abs(distance - 450) < 1);
 	page.key("h");
 	page.advance(100);
 	assert.ok(nestedMovements.at(-1).left < 0);
