@@ -17,5 +17,6 @@ let
 in
 {
   "hetzner.age".publicKeys = infrastructureRecipients;
+  "browsing.age".publicKeys = infrastructureRecipients;
 }
 // fontSecrets

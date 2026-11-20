@@ -3,6 +3,7 @@ let
   theme = pkgs.callPackage ./default.nix { };
   tabSearch = pkgs.callPackage ../tab-search { };
   pageNavigation = pkgs.callPackage ../page-navigation { };
+  browsing = pkgs.callPackage ../../common/browsing { };
   original = "${helium}/Applications/Helium.app";
 in
 pkgs.runCommand "helium-themed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
@@ -19,5 +20,7 @@ pkgs.runCommand "helium-themed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
       plistlib.dump(info, target)
   PY
   makeWrapper ${theme}/bin/browser-theme "$app/Contents/MacOS/browser-theme" \
-    --add-flags 'launch -- ${original}/Contents/MacOS/Helium --load-extension=${tabSearch}/share/tab-search,${pageNavigation}/share/page-navigation'
+    --run 'boundaries="$(${browsing}/bin/browsing-rules extension)" || exit 1' \
+    --add-flags 'launch -- ${original}/Contents/MacOS/Helium' \
+    --add-flags '--load-extension=${tabSearch}/share/tab-search,${pageNavigation}/share/page-navigation,"$boundaries"'
 ''

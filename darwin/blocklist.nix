@@ -1,18 +1,32 @@
-{ pkgs, ... }:
+{
+  pkgs,
+  config,
+  lib,
+  ...
+}:
 let
+  browsing = pkgs.callPackage ../common/browsing { };
+  identity = "${config.users.users.and-rs.home}/.ssh/agenix-darwin";
   dnsmasqConf = pkgs.writeText "dnsmasq.conf" ''
     listen-address=127.0.0.1
     port=53
     server=1.1.1.3
-    addn-hosts=/opt/blocklist.hosts
+    no-resolv
+    conf-file=/var/lib/browsing/dnsmasq.conf
   '';
 
   dnsmasqWrapper = pkgs.writeShellScript "dnsmasq-wrapper" ''
+    ${browsing}/bin/browsing-rules dns \
+      --identity ${lib.escapeShellArg identity} \
+      --output /var/lib/browsing/dnsmasq.conf || exit 1
     exec ${pkgs.dnsmasq}/bin/dnsmasq -k -C ${dnsmasqConf}
   '';
 in
 {
-  environment.systemPackages = [ pkgs.dnsmasq ];
+  environment.systemPackages = [
+    pkgs.dnsmasq
+    browsing
+  ];
 
   networking.dns = [
     "127.0.0.1"

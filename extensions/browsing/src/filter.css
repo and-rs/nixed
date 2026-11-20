@@ -1,0 +1,18 @@
+/* Hide marked cards before the observer runs, including dynamically inserted ones. */
+shreddit-post[nsfw]:not([nsfw="false"]),
+shreddit-post[over-18]:not([over-18="false"]),
+[data-nsfw="true"],
+[data-over18="true"],
+.thing.over18,
+article:has([slot="nsfw-badge"]),
+shreddit-post:has([slot="nsfw-badge"]),
+shreddit-post:has([data-testid="nsfw-badge"]),
+shreddit-content-gate[reason="nsfw"],
+shreddit-content-gate[reason="over18"] {
+	display: none !important;
+}
+
+html:not([data-browsing-ready]),
+html[data-browsing-checking] {
+	visibility: hidden !important;
+}

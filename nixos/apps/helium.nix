@@ -18,11 +18,13 @@ let
   theme = callPackage ../../extensions/browser-theme { };
   tabSearch = callPackage ../../extensions/tab-search { };
   pageNavigation = callPackage ../../extensions/page-navigation { };
+  browsing = callPackage ../../common/browsing { };
   unwrapped = appimageTools.wrapType2 {
     inherit pname version src;
   };
   helium = writeShellScriptBin "helium-browser" ''
-    exec ${theme}/bin/browser-theme launch -- ${unwrapped}/bin/helium-browser --load-extension=${tabSearch}/share/tab-search,${pageNavigation}/share/page-navigation "$@"
+    boundaries="$(${browsing}/bin/browsing-rules extension)" || exit 1
+    exec ${theme}/bin/browser-theme launch -- ${unwrapped}/bin/helium-browser --load-extension=${tabSearch}/share/tab-search,${pageNavigation}/share/page-navigation,"$boundaries" "$@"
   '';
 
   desktopItem = makeDesktopItem {

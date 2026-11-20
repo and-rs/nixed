@@ -93,6 +93,34 @@ font-rekey:
     mv -- "$stage/$(basename "$file")" "$file"
   done
 
+# --- Browsing ---
+
+browsing-edit:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  identity="${AGENIX_IDENTITY:-$HOME/.ssh/agenix}"
+  if [[ "$(uname -s)" == Darwin ]]; then
+    identity="${AGENIX_IDENTITY:-$HOME/.ssh/agenix-darwin}"
+  fi
+  cd secrets
+  agenix -i "$identity" -e browsing.age
+
+browsing-refresh:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  identity="${AGENIX_IDENTITY:-$HOME/.ssh/agenix}"
+  if [[ "$(uname -s)" == Darwin ]]; then
+    identity="${AGENIX_IDENTITY:-$HOME/.ssh/agenix-darwin}"
+  fi
+  keys="$(nix eval --impure --raw --expr 'builtins.concatStringsSep "\n" (import ./secrets/secrets.nix)."browsing.age".publicKeys')"
+  recipients=()
+  while IFS= read -r key; do
+    [[ -z "$key" ]] || recipients+=(--recipient "$key")
+  done <<< "$keys"
+  python3 common/browsing/rules.py \
+    --encrypted secrets/browsing.age --extension-source extensions/browsing/src \
+    refresh --identity "$identity" "${recipients[@]}"
+
 # --- Infrastructure ---
 
 plan:

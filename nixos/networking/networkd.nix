@@ -1,5 +1,33 @@
-{ ... }:
 {
+  pkgs,
+  config,
+  lib,
+  ...
+}:
+let
+  browsing = pkgs.callPackage ../../common/browsing { };
+  identity = "${config.users.users.and-rs.home}/.ssh/agenix";
+in
+{
+  environment.systemPackages = [ browsing ];
+  systemd.services.dnsmasq.restartTriggers = [ browsing ];
+
+  systemd.services.browsing-rules = {
+    description = "Decrypt and compile browsing DNS boundaries";
+    before = [ "dnsmasq.service" ];
+    requiredBy = [ "dnsmasq.service" ];
+    partOf = [ "dnsmasq.service" ];
+    restartTriggers = [ ../../secrets/browsing.age ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      StateDirectory = "browsing";
+      StateDirectoryMode = "0700";
+      UMask = "0077";
+      ExecStart = "${browsing}/bin/browsing-rules dns --identity ${lib.escapeShellArg identity} --output /var/lib/browsing/dnsmasq.conf";
+    };
+  };
+
   services = {
     # tailscale.enable = true;
     resolved.enable = true;
@@ -14,7 +42,7 @@
         bind-interfaces = true;
         server = [ "1.1.1.3" ];
         no-resolv = true;
-        addn-hosts = "/opt/blocklist.hosts";
+        conf-file = "/var/lib/browsing/dnsmasq.conf";
         cache-size = 1000;
       };
     };
