@@ -115,6 +115,14 @@ test("upstream fuzzy matching handles multiple tokens, highlights and long queri
 	assert.equal(scoreItems([addURLs({title: long, url: "https://example/"})], long).length, 1);
 });
 
+test("repeated search tokens cannot reuse the same match in a field", () => {
+	global.chrome = {runtime};
+	const once = addURLs({title: "Echo", url: "https://example/"});
+	const twice = addURLs({title: "Echo Echo", url: "https://example/"});
+	assert.deepEqual(scoreItems([once, twice], "echo echo"), [twice]);
+	assert.deepEqual(twice.hitMasks.title, [0, 1, 2, 3, 5, 6, 7, 8]);
+});
+
 test("popup refresh preserves selection by identity; removal clamps and a new query resets it", async () => {
 	class Element {
 		children = [];

@@ -70,71 +70,27 @@ export default function(
 	}
 
 
-	function scoreSingleToken(
-		items,
-		query)
-	{
+	return function scoreArray(items, tokens) {
 		for (const item of items) {
-				// find the highest score for each keyed string on this item
-			item.score = keys.reduce((currentScore, key) => {
+			item.hitMasks = {};
+			const tokenScores = new Array(tokens.length).fill(0);
+
+			for (const key of keys) {
 				const hitMask = [];
-				const string = item[key];
-					// score empty strings as 0
-				const newScore = string
-					? score(string, query, hitMask)
-					: 0;
-
-				item.hitMasks[key] = hitMask;
-
-				return Math.max(currentScore, newScore);
-			}, 0);
-		}
-	}
-
-
-	return function scoreArray(
-		items,
-		tokens)
-	{
-		for (const item of items) item.hitMasks = {};
-
-		if (tokens.length === 1) {
-				// use a simpler loop when there's just one token
-			scoreSingleToken(items, tokens[0]);
-		} else if (tokens.length > 1) {
-			for (const item of items) {
-					// init the map with 0 for each key, so we don't have to
-					// handle missing keys in Math.max() below
-				const tokenScores = new Array(tokens.length).fill(0);
-
-				for (const key of keys) {
-					const hitMask = [];
-					let string = item[key];
-
-						// empty strings will get a score of 0
-					if (string) {
-						for (let i = 0, len = tokens.length; i < len; i++) {
-							const token = tokens[i];
-							const tokenMatches = [];
-							const tokenScore = score(string, token, tokenMatches);
-
-							if (tokenScore) {
-								string = replaceMatches(string, tokenMatches);
-								hitMask.push(...tokenMatches);
-								tokenScores[i] = Math.max(tokenScore, tokenScores[i]);
-							}
-						}
-
-						hitMask.sort(numerically);
-					}
-
-					item.hitMasks[key] = hitMask;
+				let string = item[key];
+				for (let i = 0; string && i < tokens.length; i++) {
+					const tokenMatches = [];
+					const tokenScore = score(string, tokens[i], tokenMatches);
+					if (!tokenScore) continue;
+					if (i + 1 < tokens.length) string = replaceMatches(string, tokenMatches);
+					hitMask.push(...tokenMatches);
+					tokenScores[i] = Math.max(tokenScore, tokenScores[i]);
 				}
-
-					// set the score to 0 if every token doesn't match at least
-					// one of the keys
-				item.score = sumScores(tokenScores);
+				item.hitMasks[key] = hitMask.sort(numerically);
 			}
+
+			// Every token must match at least one field.
+			item.score = sumScores(tokenScores);
 		}
 
 		items.sort(compareScoredStrings);

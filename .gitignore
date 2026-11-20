@@ -3,6 +3,7 @@ secrets/fonts/*.tar.gz
 
 .direnv
 result
+__pycache__/
 
 ### Terraform
 # Local .terraform directories
