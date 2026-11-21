@@ -32,6 +32,7 @@ pkgs.symlinkJoin {
     pkgs.mpv
 
     pkgs.awww
+    pkgs.amane
     pkgs.niri
     pkgs.grim
     pkgs.satty

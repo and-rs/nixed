@@ -5,6 +5,10 @@
     obs-rev.url = "github:nixos/nixpkgs/2fc6539b481e1d2569f25f8799236694180c0993";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     stable.url = "github:nixos/nixpkgs/nixos-25.11";
+    dotfiles = {
+      url = "github:and-rs/dotfiles";
+      flake = false;
+    };
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -46,6 +50,7 @@
     let
       linuxSystem = "x86_64-linux";
       darwinSystem = "aarch64-darwin";
+      amaneSource = /. + builtins.unsafeDiscardStringContext "${inputs.dotfiles}/dot_config/amane";
 
       packagesOverlayShared = final: prev: {
         tmux = stable.legacyPackages.${final.stdenv.hostPlatform.system}.tmux;
@@ -55,6 +60,10 @@
       };
 
       packagesOverlayNixos = final: prev: {
+        amane = import ./common/amane.nix {
+          pkgs = final;
+          source = amaneSource;
+        };
         docker-compose = stable.legacyPackages.${linuxSystem}.docker-compose;
         helium-browser = final.callPackage ./nixos/apps/helium.nix { };
         asusctl = final.callPackage ./nixos/apps/asusctl.nix { };
@@ -76,6 +85,13 @@
         overlays = [
           nixgl.overlay
           packagesOverlayShared
+          (final: _prev: {
+            amane = import ./common/amane.nix {
+              pkgs = final;
+              source = amaneSource;
+              useMesaIcds = true;
+            };
+          })
         ];
       };
 
@@ -89,10 +105,15 @@
         };
     in
     {
-      devShells.${linuxSystem}.default = mkDevShell linuxSystem;
+      devShells.${linuxSystem} = {
+        default = mkDevShell linuxSystem;
+        amane = import ./common/amane_dev.nix { pkgs = amadeusPkgs; };
+      };
       devShells.${darwinSystem}.default = mkDevShell darwinSystem;
 
       packages.${linuxSystem} = {
+        amane = self.nixosConfigurations.default.pkgs.amane;
+        amane_amadeus = amadeusPkgs.amane;
         obs-backgroundremoval = self.nixosConfigurations.default.pkgs.obs-backgroundremoval;
 
         amadeus = import ./amadeus/default.nix {

@@ -55,6 +55,22 @@
         "type": "github"
       }
     },
+    "dotfiles": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1795210563,
+        "narHash": "sha256-8hZ4b/AHyIfSPYyKWVzrkFsBgxZiAbaetC980WV7gRI=",
+        "owner": "and-rs",
+        "repo": "dotfiles",
+        "rev": "ddec83517bae6a64427678cbf2e7d32449cfb8ae",
+        "type": "github"
+      },
+      "original": {
+        "owner": "and-rs",
+        "repo": "dotfiles",
+        "type": "github"
+      }
+    },
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": "nixpkgs-lib"
@@ -203,6 +219,7 @@
       "inputs": {
         "agenix": "agenix",
         "disko": "disko",
+        "dotfiles": "dotfiles",
         "home-manager": "home-manager",
         "nix-darwin": "nix-darwin",
         "nixgl": "nixgl",

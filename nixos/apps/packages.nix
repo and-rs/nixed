@@ -24,6 +24,7 @@ let
   ];
 
   system = with pkgs; [
+    amane
     inotify-tools
     brightnessctl
     appimage-run
