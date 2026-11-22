@@ -2,6 +2,7 @@
 with pkgs;
 [
   inputs.agenix.packages.${stdenv.hostPlatform.system}.default
+  (callPackage "${inputs.direnv-instant}/default.nix" { })
   (callPackage ../extensions/browser-theme { })
   bob-nvim
   kakoune
@@ -10,7 +11,6 @@ with pkgs;
   fzf
   tmux
   direnv
-  (callPackage "${inputs.direnv-instant}/default.nix" { })
   zoxide
   oh-my-posh
 
@@ -44,6 +44,7 @@ with pkgs;
   yazi
   btop
   wget
+  ncdu
   nmap
   git
   eza

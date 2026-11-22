@@ -1,6 +1,6 @@
 { pkgs, ... }:
 let
-  version = "0.19.3.1";
+  version = "0.22.2.1";
 
   helium = pkgs.stdenvNoCC.mkDerivation {
     pname = "helium-browser";
@@ -8,7 +8,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://github.com/imputnet/helium-macos/releases/download/${version}/helium_${version}_arm64-macos.dmg";
-      hash = "sha256-ugwwxIPubEbkj/wjmuaysIR6/etU60puoxZlBUpS0Vk=";
+      hash = "sha256-wzU6qTaERhMhAgPJR8PTFd6zJVx40JKTFBxEfdMkw4g=";
     };
 
     nativeBuildInputs = [ pkgs.undmg ];
