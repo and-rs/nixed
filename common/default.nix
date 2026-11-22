@@ -8,6 +8,7 @@
   environment.systemPackages =
     (import ./terminal.nix { inherit pkgs inputs; })
     ++ (import ./tooling.nix { inherit pkgs; });
+  environment.pathsToLink = [ "/share/direnv-instant" ];
 
   nix.settings.warn-dirty = false;
   nix.settings.experimental-features = [

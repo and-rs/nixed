@@ -10,6 +10,7 @@ with pkgs;
   fzf
   tmux
   direnv
+  (callPackage "${inputs.direnv-instant}/default.nix" { })
   zoxide
   oh-my-posh
 

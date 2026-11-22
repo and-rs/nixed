@@ -9,6 +9,10 @@
       url = "github:and-rs/dotfiles";
       flake = false;
     };
+    direnv-instant = {
+      url = "github:Mic92/direnv-instant/991706214dfef2a04d915a95f061e58769e5fb05";
+      flake = false;
+    };
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
