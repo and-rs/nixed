@@ -15,7 +15,7 @@ EXTENSION_ID = "mmfbflaekjfllceokohbkjafnljjgafl"
 
 class ShortcutTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(dir="/tmp/opencode")
+        self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.profile = self.root / "Default"
@@ -86,6 +86,22 @@ class ShortcutTests(unittest.TestCase):
         self.assertFalse(HELPER["configure_tab_search"](prefs, self.manifest))
         self.assertEqual(prefs, {"unrelated": True})
 
+    def test_secure_registration_assigns_shortcut_without_modifying_it(self):
+        secure = {"extensions": {"settings": {EXTENSION_ID: {"path": "unchanged"}}}}
+        before = copy.deepcopy(secure)
+        prefs = {"unrelated": True}
+        with patch.object(sys, "platform", "darwin"):
+            self.assertTrue(
+                HELPER["configure_tab_search"](prefs, self.manifest, secure)
+            )
+        self.assertEqual(
+            prefs["extensions"]["commands"]["mac:Command+O"]["extension"],
+            EXTENSION_ID,
+        )
+        self.assertNotIn("settings", prefs["extensions"])
+        self.assertEqual(secure, before)
+
+    @patch.object(sys, "platform", "linux")
     def test_manifest_change_replaces_previous_assignment(self):
         HELPER["configure_tab_search"](self.prefs, self.manifest)
         manifest = json.loads(self.manifest.read_text())
@@ -121,7 +137,22 @@ class ShortcutTests(unittest.TestCase):
         self.assertEqual(result.returncode, 17)
         self.assertEqual(result.stderr, "")
         prefs = json.loads(self.preferences.read_text())
-        self.assertIn("linux:Ctrl+O", prefs["extensions"]["commands"])
+        key = "mac:Command+O" if sys.platform == "darwin" else "linux:Ctrl+O"
+        self.assertIn(key, prefs["extensions"]["commands"])
+
+    def test_launch_with_secure_registration(self):
+        secure = self.profile / "Secure Preferences"
+        secure.write_text(json.dumps({"extensions": {
+            "settings": self.prefs["extensions"].pop("settings")
+        }}))
+        self.preferences.write_text(json.dumps(self.prefs))
+        before = secure.read_bytes()
+        result = self.launch()
+        self.assertEqual(result.returncode, 17)
+        prefs = json.loads(self.preferences.read_text())
+        key = "mac:Command+O" if sys.platform == "darwin" else "linux:Ctrl+O"
+        self.assertEqual(prefs["extensions"]["commands"][key]["extension"], EXTENSION_ID)
+        self.assertEqual(secure.read_bytes(), before)
 
     def test_dangling_lock_leaves_preferences_untouched(self):
         (self.root / "SingletonLock").symlink_to("missing-host-123")

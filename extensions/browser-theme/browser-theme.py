@@ -24,18 +24,19 @@ def write_json(path, value):
             temporary.unlink(missing_ok=True)
 
 
-def configure_tab_search(prefs, manifest_path):
+def configure_tab_search(prefs, manifest_path, secure_prefs=None):
     manifest = json.loads(manifest_path.read_text())
     extensions = prefs.get("extensions", {})
     settings = extensions.get("settings", {}).get(TAB_SEARCH_ID)
-    if settings is None:
+    secure_settings = (secure_prefs or {}).get("extensions", {}).get("settings", {})
+    if settings is None and TAB_SEARCH_ID not in secure_settings:
         return False
 
     platform = "mac" if sys.platform == "darwin" else "linux"
     command = "_execute_action"
     keys = manifest["commands"][command]["suggested_key"]
     shortcut = keys.get(platform, keys["default"])
-    bindings = extensions.setdefault("commands", {})
+    bindings = prefs.setdefault("extensions", {}).setdefault("commands", {})
     for key, binding in list(bindings.items()):
         if (
             key.startswith(platform + ":")
@@ -48,9 +49,10 @@ def configure_tab_search(prefs, manifest_path):
         "command_name": command,
         "global": False,
     }
-    settings.setdefault("commands", {}).setdefault(command, {}).update(
-        suggested_key=shortcut, was_assigned=True
-    )
+    if settings is not None:
+        settings.setdefault("commands", {}).setdefault(command, {}).update(
+            suggested_key=shortcut, was_assigned=True
+        )
     return True
 
 
@@ -66,11 +68,17 @@ def update_theme(profile, action, seed, variant, config, tab_search_manifest=Non
     preferences = profile / "Preferences"
     backup = profile / "browser-theme-seed-test.json"
     prefs = json.loads(preferences.read_text())
+    secure_preferences = profile / "Secure Preferences"
+    secure_prefs = (
+        json.loads(secure_preferences.read_text())
+        if action == "launch" and tab_search_manifest and secure_preferences.is_file()
+        else None
+    )
 
     if (
         action == "launch"
         and tab_search_manifest
-        and configure_tab_search(prefs, tab_search_manifest)
+        and configure_tab_search(prefs, tab_search_manifest, secure_prefs)
     ):
         write_json(preferences, prefs)
 
