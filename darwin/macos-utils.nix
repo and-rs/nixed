@@ -2,7 +2,7 @@
 {
   fonts = {
     packages = with pkgs; [
-      nerd-fonts.symbols-only
+      recursive
       monaspace
       kode-mono
       (google-fonts.override { fonts = [ "Spline Sans Mono" ]; })
