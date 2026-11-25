@@ -72,7 +72,6 @@ in
     xwayland-satellite
     gpu-screen-recorder
     wl-clipboard
-    quickshell
     xwayland
     upower
     slurp

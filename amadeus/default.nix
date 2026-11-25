@@ -43,11 +43,9 @@ pkgs.symlinkJoin {
     hostIntegratedHyprlock
     pkgs.playerctl
     pkgs.pwvucontrol
-    pkgs.quickshell
     hostIntegratedGoogleChrome
     pkgs.inter
     pkgs.xwayland-satellite
-    pkgs.kdePackages.qtdeclarative
     pkgs.xdg-desktop-portal-gnome
     pkgs.xdg-desktop-portal-gtk
     pkgs.xdg-desktop-portal
