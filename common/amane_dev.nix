@@ -12,21 +12,12 @@
     util-linux
   ];
 
-  buildInputs = with pkgs; [
-    fontconfig
-    freetype
-    expat
-    wayland
-    libxkbcommon
-    libpulseaudio
-    linux-pam
-  ];
+  inherit (pkgs.amane) buildInputs LIBRARY_PATH;
 
   LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
     pkgs.vulkan-loader
     pkgs.wayland
   ];
-  LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.linux-pam ];
   CARGO_PROFILE_DEV_DEBUG = "line-tables-only";
 
   shellHook = ''

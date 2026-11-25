@@ -35,6 +35,9 @@ amadeus-upgrade:
   sudo env NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt nix profile upgrade 0 --impure
 # /nix/var/nix/profiles/default/bin/private-fonts-profile-watch-install
 
+dotfiles-update:
+  sudo nix flake lock --update-input dotfiles
+
 # --- font ---
 
 font-encrypt src name:
