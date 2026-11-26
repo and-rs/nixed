@@ -32,7 +32,7 @@
 	let hintFramePending = false;
 	let scrollHints = false;
 	let scrollTarget;
-	let scrollRefresh;
+	let scrollOutlineTimer;
 	let scrollMotion;
 	let scrollFrame;
 
@@ -117,11 +117,11 @@
 	}
 
 	function activeModal(elements) {
-		const native = elements.filter(element => element.matches(":modal") && visible(element)).at(-1);
-		return elements.filter(element =>
+		const native = elements.findLast(element => element.matches(":modal") && visible(element));
+		return elements.findLast(element =>
 			element.matches('[aria-modal="true"]') && visible(element) &&
 			(!native || [...ancestors(element)].includes(native))
-		).at(-1) || native;
+		) || native;
 	}
 
 	function clickable(element) {
@@ -170,17 +170,18 @@
 		});
 	}
 
-	function clearHints() {
+	function clearOverlay() {
 		hints = [];
 		hintPrefix = "";
-		shadow.querySelectorAll(".hint").forEach(element => element.remove());
+		clearTimeout(scrollOutlineTimer);
+		scrollOutlineTimer = undefined;
+		shadow.querySelectorAll(".hint, .scroll-target").forEach(element => element.remove());
 		host.hidePopover();
 	}
 
 	function showHints(forScroll = false) {
 		stopScroll();
-		if (scrollRefresh === undefined) clearHints();
-		else clearScrollOutline();
+		clearOverlay();
 		const rendered = [...renderedElements(document)];
 		const modal = activeModal(rendered);
 		const scope = modal ? [...renderedElements(modal)] : rendered;
@@ -272,10 +273,10 @@
 		if (!stylesheetReady) return;
 		const remaining = hints.filter(hint => hint.label.startsWith(label));
 		if (!remaining.length) {
-			clearHints();
+			clearOverlay();
 		} else if (remaining.length === 1 && remaining[0].label === label) {
 			const {element, press} = remaining[0];
-			clearHints();
+			clearOverlay();
 			if (scrollHints) {
 				if (!hintPoint(element)) return;
 				scrollTarget = element;
@@ -310,13 +311,6 @@
 			: element.getBoundingClientRect();
 	}
 
-	function clearScrollOutline() {
-		clearTimeout(scrollRefresh);
-		scrollRefresh = undefined;
-		shadow.querySelectorAll(".scroll-target").forEach(element => element.remove());
-		host.hidePopover();
-	}
-
 	function showScrollOutline(element) {
 		const rect = scrollRect(element);
 		const outline = document.createElement("div");
@@ -327,7 +321,7 @@
 		});
 		shadow.append(outline);
 		host.showPopover();
-		scrollRefresh = setTimeout(clearScrollOutline, 700);
+		scrollOutlineTimer = setTimeout(clearOverlay, 700);
 	}
 
 	function stopScroll() {
@@ -386,8 +380,8 @@
 
 		const key = event.key.toLowerCase();
 		if (event.ctrlKey) {
-			if (key !== "s" || event.shiftKey) return;
-			if (!event.repeat) showHints();
+			if ((key !== "s" && key !== "c") || event.shiftKey) return;
+			if (!event.repeat) showHints(key === "c");
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			return;
@@ -395,13 +389,13 @@
 
 		if (hints.length) {
 			if (event.key === "Escape") {
-				clearHints();
+				clearOverlay();
 			} else if (event.key === "Backspace") {
 				chooseHint(hintPrefix.slice(0, -1));
 			} else if (event.key.length === 1 && alphabet.includes(event.key.toUpperCase())) {
 				if (!event.repeat) chooseHint(hintPrefix + event.key.toUpperCase());
 			} else {
-				clearHints();
+				clearOverlay();
 				return;
 			}
 			event.preventDefault();
@@ -414,8 +408,6 @@
 			showHints();
 		} else if (/^[hjkl]$/.test(event.key) || (event.shiftKey && /^[jk]$/.test(key))) {
 			if (!event.repeat) scroll(key, event.shiftKey);
-		} else if (key === "c" && event.shiftKey) {
-			if (!event.repeat) showHints(true);
 		} else {
 			return;
 		}

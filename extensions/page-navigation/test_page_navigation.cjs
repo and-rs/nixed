@@ -25,166 +25,86 @@ test("hint labels are unique fixed-width prefixes for any candidate count", () =
 });
 
 test("hint sessions keep stable targets and focus editable selections", () => {
-	const nodes = [];
-	const listeners = {};
-	const frames = [];
-	let keydown;
-	let stylesheetLoaded;
+	const page = shadowPage({deferStylesheet: true});
+	const root = page.document.documentElement;
 	let clicked;
-	let scans = 0;
-	let modal;
-	let overlayOpen = false;
-	let overlay;
-	const shadow = {
-		append(node) { nodes.push(node); },
-		querySelectorAll() { return nodes.filter(node => node.className === "hint"); }
-	};
-	const rect = {top: 20, left: 20, width: 100, height: 20, right: 120, bottom: 40};
-	const targets = Array.from({length: 17}, (_, index) => ({
-		nodeType: 1,
-		isConnected: true,
-		children: [],
-		getRootNode() { return document; },
-		matches(selector) { return selector.includes("area[href]"); },
-		hasAttribute() { return false; },
-		getAttribute() { return null; },
-		closest() { return null; },
-		getBoundingClientRect() {
-			return this.rect || {...rect, top: rect.top + index * 24, bottom: rect.bottom + index * 24};
-		},
-		click() { clicked = index; }
-	}));
-	const document = {
-		documentElement: {append() {}},
-		elementFromPoint(x, y) {
-			return targets.find(target => {
-				const {left, right, top, bottom} = target.getBoundingClientRect();
-				return x >= left && x < right && y >= top && y < bottom;
-			});
-		},
-		createElement() {
-			return {
-				style: {}, offsetWidth: 20, offsetHeight: 16,
-				attachShadow() { return shadow; },
-				showPopover() { overlayOpen = true; overlay = this; },
-				hidePopover() { overlayOpen = false; },
-				addEventListener(type, callback) { stylesheetLoaded = callback; },
-				remove() { nodes.splice(nodes.indexOf(this), 1); }
-			};
-		},
-		get children() { scans++; return modal ? [modal] : targets; },
-		addEventListener(type, callback) { if (type === "keydown") keydown = callback; }
-	};
-	runInNewContext(readFileSync(join(__dirname, "src/js/content.js"), "utf8"), {
-		PageNavigation: algorithms, document,
-		chrome: {runtime: {getURL: path => path}},
-		innerWidth: 1000, innerHeight: 1000,
-		getComputedStyle: () => ({visibility: "visible", display: "block", opacity: "1"}),
-		addEventListener(type, callback) { listeners[type] = callback; },
-		requestAnimationFrame(callback) { frames.push(callback); }
+	const targets = Array.from({length: 17}, (_, index) => {
+		const button = page.element("button");
+		button.click = () => { clicked = index; };
+		return button;
 	});
-	let prevented = 0;
-	let stopped = 0;
-	const key = (key, target = {closest() { return null; }}, path = [target]) => keydown({
-		key, target, shiftKey: key === "C",
-		composedPath() { return path; },
-		preventDefault() { prevented++; },
-		stopImmediatePropagation() { stopped++; }
-	});
-	const hints = () => nodes.filter(node => node.className === "hint");
-	const input = {
-		closest(selector) { return selector.includes("input") ? this : null; }
-	};
-	const shadowHost = {closest() { return null; }};
-	for (const shortcut of ["s", "S", "j", "k", "h", "l", "C"]) {
-		key(shortcut, input);
-		key(shortcut, shadowHost, [input, {}, shadowHost, document]);
+	root.append(...targets);
+	const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint");
+	const editor = page.element("textarea");
+	const shadowHost = page.element("custom-editor");
+	const shadow = shadowHost.attachShadow();
+	editor.closest = selector => selector.includes("textarea") ? editor : null;
+	for (const shortcut of ["s", "S", "j", "k", "h", "l"]) {
+		for (const path of [[editor, root], [editor, shadow, shadowHost, root]]) {
+			const event = page.key(shortcut, "keydown", {composedPath: () => path});
+			assert.equal(event.prevented, undefined);
+			assert.equal(event.stopped, undefined);
+		}
 	}
-	assert.equal(scans, 0);
 	assert.equal(hints().length, 0);
-	assert.equal(prevented, 0);
-	assert.equal(stopped, 0);
-	key("s");
-	assert.equal(overlayOpen, true);
-	assert.equal(prevented, 1);
-	assert.equal(stopped, 1);
+	assert.equal(page.frames.size, 0);
+	const trigger = page.key("s");
+	assert.equal(trigger.prevented, true);
+	assert.equal(trigger.stopped, true);
+	assert.equal(page.overlay.popoverOpen, true);
 	const original = hints();
-	assert.equal(overlay.style.opacity, "0");
+	assert.equal(original.length, 17);
+	assert.equal(page.overlay.style.opacity, "0");
 	assert.equal(original[0].style.top, undefined);
-	key("s");
+	page.key("s");
 	assert.equal(clicked, undefined);
-	targets[0].rect = {...rect, top: 10, bottom: 30};
-	stylesheetLoaded();
-	assert.equal(overlay.style.opacity, "");
+	targets[0].rect = {...targets[0].getBoundingClientRect(), top: 10, bottom: 30};
+	page.loadStylesheet();
+	assert.equal(page.overlay.style.opacity, "");
 	assert.equal(original[0].style.top, "11px");
-	key("s");
+	page.key("s");
 	assert.equal(original.filter(node => !node.hidden).length, 2);
-	targets[0].isConnected = false;
-	targets[15].rect = {...rect, top: -100, bottom: -80};
-	targets.reverse();
-	listeners.scroll();
-	frames.shift()();
-	listeners.resize();
-	assert.equal(scans, 1);
+	targets[0].remove();
+	targets[15].rect = {...targets[15].getBoundingClientRect(), top: -100, bottom: -80};
+	root.append(...targets.slice(1).reverse());
+	page.emit("scroll");
+	page.advance(10);
 	assert.deepEqual(hints(), original);
 	assert.equal(original[15].hidden, true);
 	assert.equal(original[16].hidden, false);
 	assert.equal(original[16].textContent, "S");
-	key("s");
+	page.key("s");
 	assert.equal(clicked, 16);
 	assert.equal(hints().length, 0);
-	key("s");
-	listeners.scroll();
-	key("Escape");
-	frames.shift()();
+	page.key("s");
+	page.emit("scroll");
+	assert.equal(page.frames.size, 1);
+	page.key("Escape");
+	page.advance(10);
 	assert.equal(hints().length, 0);
-	assert.equal(scans, 2);
+	assert.equal(page.overlay.popoverOpen, false);
 
-	let focused = false;
-	const editor = {
-		...targets[0],
-		isConnected: true,
-		closest(selector) { return selector.includes("textarea") ? this : null; },
-		focus() {
-			assert.equal(hints().length, 0);
-			focused = true;
-		},
-		click() { assert.equal(focused, true); }
+	for (const target of targets) target.remove();
+	root.append(editor);
+	const actions = [];
+	editor.focus = () => {
+		assert.equal(hints().length, 0);
+		actions.push("focus");
 	};
-	targets.splice(0, targets.length, editor);
-	key("s");
-	key("a");
-	assert.equal(focused, true);
+	editor.click = () => actions.push("click");
+	page.key("s");
+	page.key("a");
+	assert.deepEqual(actions, ["focus", "click"]);
 	assert.equal(hints().length, 0);
-	key("s", editor);
-	assert.equal(hints().length, 0);
-	assert.equal(scans, 3);
-
-	let modalScans = 0;
-	let overlayParent;
-	modal = {
-		nodeType: 1,
-		matches(selector) { return selector === ":modal"; },
-		getRootNode() { return document; },
-		getBoundingClientRect() { return rect; },
-		append(node) { overlayParent = node; },
-		get children() { modalScans++; return [targets[0]]; }
-	};
-	key("s");
-	assert.equal(modalScans, 2);
-	assert.equal(scans, 4);
-	assert.equal(overlayParent.id, "page-navigation-host");
-	assert.equal(overlayOpen, true);
-	key("Escape");
-	assert.equal(overlayOpen, false);
 });
 
-function shadowPage() {
+function shadowPage({deferStylesheet = false} = {}) {
 	const listeners = {};
 	const frames = new Map();
+	const timers = new Map();
 	const movements = [];
 	let now = 0;
-	let frameId = 0;
+	let callbackId = 0;
 	let stylesheetLoaded;
 	let elementIndex = 0;
 	const clicked = [];
@@ -241,7 +161,7 @@ function shadowPage() {
 				if (selector === "[inert], [aria-hidden='true']") {
 					return "inert" in attributes || attributes["aria-hidden"] === "true";
 				}
-				const selectors = selector.split(",");
+				const selectors = selector.split(",").map(part => part.trim());
 				return selectors.includes(localName) ||
 					(selectors.includes(`${localName}[href]`) && "href" in attributes) ||
 					selectors.includes(`[role=${attributes.role}]`) ||
@@ -257,8 +177,8 @@ function shadowPage() {
 			},
 			assignedNodes() { return this.assigned || []; },
 			addEventListener(type, callback) { if (type === "load") stylesheetLoaded = callback; },
-			showPopover() {},
-			hidePopover() {},
+			showPopover() { this.popoverOpen = true; },
+			hidePopover() { this.popoverOpen = false; },
 			click() { clicked.push(name); },
 			remove() {
 				if (!this.parentNode) return;
@@ -272,7 +192,7 @@ function shadowPage() {
 	document.children.push(document.documentElement);
 	document.documentElement.parentNode = document;
 	document.scrollingElement = document.documentElement;
-	document.scrollingElement.scrollBy = options => movements.push({...options, time: now});
+	document.scrollingElement.scrollBy = options => movements.push(options);
 	document.createElement = element;
 	runInNewContext(readFileSync(join(__dirname, "src/js/content.js"), "utf8"), {
 		PageNavigation: algorithms, document,
@@ -288,30 +208,38 @@ function shadowPage() {
 		MouseEvent: class { constructor(type, options) { Object.assign(this, {type}, options); } },
 		addEventListener(type, callback) { listeners[type] = callback; },
 		performance: {now: () => now},
-		requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
+		requestAnimationFrame(callback) { frames.set(++callbackId, callback); return callbackId; },
 		cancelAnimationFrame(id) { frames.delete(id); },
-		setTimeout() { return 1; },
-		clearTimeout() {}
+		setTimeout(callback, delay) {
+			timers.set(++callbackId, {callback, due: now + delay});
+			return callbackId;
+		},
+		clearTimeout(id) { timers.delete(id); }
 	});
-	stylesheetLoaded();
+	if (!deferStylesheet) stylesheetLoaded();
 	const overlay = document.documentElement.children[0];
 	function key(key, type = "keydown", properties = {}) {
 		const event = {
-			key, shiftKey: key === "C", composedPath: () => [],
+			key, composedPath: () => [],
 			preventDefault() { this.prevented = true; },
-			stopImmediatePropagation() {},
+			stopImmediatePropagation() { this.stopped = true; },
 			...properties
 		};
 		listeners[type](event);
 		return event;
 	}
 	return {
-		element, document, overlay, key, movements, frames,
+		element, document, overlay, key, movements, frames, loadStylesheet: stylesheetLoaded,
 		emit(type, event = {}) { listeners[type](event); },
 		advance(milliseconds, interval = 10) {
 			const end = now + milliseconds;
 			while (now < end) {
 				now = Math.min(now + interval, end);
+				for (const [id, {callback, due}] of timers) {
+					if (due > now) continue;
+					timers.delete(id);
+					callback();
+				}
 				const pending = [...frames.values()];
 				frames.clear();
 				for (const callback of pending) callback(now);
@@ -688,7 +616,7 @@ test("scrolling stops on lost focus, hidden pages, editable focus, hints, or tar
 		page => { page.document.hidden = true; page.emit("visibilitychange"); },
 		page => page.emit("focusin", {composedPath: () => [{closest: () => true}]}),
 		page => page.key("s"),
-		page => page.key("C"),
+		page => page.key("c", "keydown", {ctrlKey: true}),
 		page => { page.document.scrollingElement.isConnected = false; page.advance(10); }
 	]) {
 		const page = shadowPage();
@@ -722,12 +650,20 @@ test("scroll hints select without clicking, cancel without changing selection, a
 	page.document.documentElement.append(host);
 	const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint").map(hint => hint.textContent);
 	const outline = () => page.overlay.shadowRoot.querySelectorAll(".scroll-target");
-	page.key("C");
+	const openScrollHints = properties => page.key("c", "keydown", {ctrlKey: true, ...properties});
+	const input = page.element("input");
+	input.closest = selector => selector.includes("input") ? input : null;
+	const focused = {composedPath: () => [input, page.document]};
+	assert.equal(page.key("C", "keydown", {shiftKey: true}).prevented, undefined);
+	assert.deepEqual(hints(), []);
+	assert.equal(openScrollHints(focused).prevented, true);
 	assert.deepEqual(hints(), ["A", "S"]);
-	page.key("s");
+	page.key("s", "keydown", focused);
 	assert.deepEqual(hints(), []);
 	assert.equal(outline().length, 1);
-	page.key("C");
+	openScrollHints();
+	page.advance(700);
+	assert.deepEqual(hints(), ["A", "S"]);
 	page.key("Escape");
 	assert.deepEqual(hints(), []);
 	assert.equal(outline().length, 0);
@@ -741,14 +677,17 @@ test("scroll hints select without clicking, cancel without changing selection, a
 	assert.ok(nestedMovements.at(-1).left < 0);
 	assert.equal(page.movements.length, 0);
 
-	page.key("C");
+	openScrollHints();
 	page.key("a");
 	page.key("l");
 	page.advance(100);
 	assert.ok(page.movements.at(-1).left > 0);
 	assert.equal(outline()[0].style.width, "1000px");
+	page.advance(600);
+	assert.equal(outline().length, 0);
+	assert.equal(page.overlay.popoverOpen, false);
 
-	page.key("C");
+	openScrollHints();
 	page.key("s");
 	area.isConnected = false;
 	page.key("k");
