@@ -1,6 +1,13 @@
 (() => {
 	const {alphabet, labelsFor} = PageNavigation;
 	const editableSelector = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]';
+	const actionSelector = [
+		"a[href]", "area[href]", "button", editableSelector,
+		"[role=button]", "[role=link]", "[role=treeitem]", "[role=tab]", "[role=option]",
+		"[role=menuitem]", "[role=menuitemcheckbox]", "[role=menuitemradio]"
+	].join(",");
+	const hintSelector = `${actionSelector},[tabindex]:not([tabindex='-1'])`;
+	const independentSelector = `${actionSelector},label,summary`;
 	const scrollSpeed = 900;
 	const scrollEaseMs = 50;
 	const scrollTapMs = 120;
@@ -63,7 +70,7 @@
 			});
 	}
 
-	function exposedPoint(element) {
+	function exposedPoint(element, activateDescendant = false, resolveWrapper) {
 		if (!element.isConnected) return;
 		const rect = element.getBoundingClientRect();
 		if (!visible(element, rect)) return;
@@ -75,21 +82,38 @@
 		const midY = (top + bottom) / 2;
 		const insetX = Math.min(1, (right - left) / 4);
 		const insetY = Math.min(1, (bottom - top) / 4);
+		let fallback;
 
 		// Hit testing accounts for both overflow clipping and content painted on top.
 		for (const y of [top + insetY, midY, bottom - insetY]) {
 			for (const x of [midX, left + insetX, right - insetX]) {
 				let hit = document.elementFromPoint(x, y);
-				while (hit) {
-					for (const ancestor of ancestors(hit)) {
-						if (ancestor === element) return {x, y};
-					}
-					const inner = hit.shadowRoot?.elementFromPoint(x, y);
-					if (inner === hit) break;
+				while (hit?.shadowRoot) {
+					const inner = hit.shadowRoot.elementFromPoint(x, y);
+					if (!inner || inner === hit) break;
 					hit = inner;
+				}
+				let target;
+				let blocked = false;
+				for (const ancestor of ancestors(hit)) {
+					if (ancestor === element) {
+						const point = {x, y, target: blocked ? element : target || element, blocked};
+						if (!blocked) {
+							if (!resolveWrapper) return point;
+							const wrapper = resolveWrapper(point.target);
+							if (wrapper) return {...point, wrapper};
+						}
+						if (!fallback || (fallback.blocked && !blocked)) fallback = point;
+						break;
+					}
+					if (!activateDescendant) continue;
+					// A wrapper's hint must not activate a separate control inside it.
+					if (ancestor.matches(independentSelector)) blocked = true;
+					if (!target && typeof ancestor.click === "function") target = ancestor;
 				}
 			}
 		}
+		return fallback;
 	}
 
 	function activeModal(elements) {
@@ -105,24 +129,39 @@
 			element.getAttribute("aria-disabled") !== "true";
 	}
 
-	function candidates(elements, forScroll) {
-		const selector = [
-			"a[href]", "area[href]", "button", editableSelector,
-			"[role=button]", "[role=link]", "[role=treeitem]", "[role=tab]", "[role=option]",
-			"[role=menuitem]", "[role=menuitemcheckbox]", "[role=menuitemradio]",
-			"[tabindex]:not([tabindex='-1'])"
-		].join(",");
-		const targets = [];
-		for (const element of elements) {
-			if (!(forScroll ? scrollable(element) : element.matches(selector) && clickable(element))) continue;
-			const point = exposedPoint(element);
-			if (point) targets.push({element, point});
+	function pointerWrapper(hit, modal) {
+		for (const element of ancestors(hit)) {
+			if (element === modal || element === document.body || element === document.documentElement ||
+				element.matches(independentSelector) || !clickable(element) ||
+				getComputedStyle(element).cursor !== "pointer") return;
+			const outer = parent(element);
+			if (!outer || getComputedStyle(outer).cursor !== "pointer") return element;
 		}
-		if (forScroll) return targets;
-		const matches = new Set(targets.map(({element}) => element));
-		return targets.filter(({element}) => {
+	}
+
+	function candidates(elements, forScroll, modal) {
+		const targets = new Map();
+		const resolveWrapper = hit => pointerWrapper(hit, modal);
+		for (const element of elements) {
+			if (!(forScroll ? scrollable(element) : element.matches(hintSelector) && clickable(element))) continue;
+			const generic = !forScroll && !element.matches(independentSelector);
+			const point = exposedPoint(element, generic, generic ? resolveWrapper : undefined);
+			if (!point) continue;
+			const {wrapper} = point;
+			if (wrapper) {
+				if (targets.get(wrapper)?.press) continue;
+				const wrapperPoint = wrapper === element ? point : exposedPoint(wrapper, true);
+				if (wrapperPoint && !wrapperPoint.blocked) {
+					targets.set(wrapper, {element: wrapper, point: wrapperPoint, press: true});
+					continue;
+				}
+			}
+			if (!targets.has(element)) targets.set(element, {element, point});
+		}
+		if (forScroll) return [...targets.values()];
+		return [...targets.values()].filter(({element}) => {
 			for (const ancestor of ancestors(element)) {
-				if (ancestor !== element && matches.has(ancestor) &&
+				if (ancestor !== element && targets.has(ancestor) &&
 					ancestor.matches("a[href],button,[role=button],[role=link]")) {
 					return false;
 				}
@@ -145,14 +184,15 @@
 		const rendered = [...renderedElements(document)];
 		const modal = activeModal(rendered);
 		const scope = modal ? [...renderedElements(modal)] : rendered;
-		const targets = candidates(scope, forScroll);
+		const targets = candidates(scope, forScroll, modal);
 		scrollHints = forScroll;
 		const root = document.scrollingElement;
 		if (forScroll && !modal && root) targets.unshift({element: root, point: hintPoint(root)});
 		if (!targets.length) return;
 		const labels = labelsFor(targets.length);
-		hints = targets.map(({element}, index) => ({
+		hints = targets.map(({element, press}, index) => ({
 			element,
+			press,
 			label: labels[index],
 			node: document.createElement("span")
 		}));
@@ -169,7 +209,8 @@
 
 	function positionHints(initialPoints) {
 		if (!stylesheetReady || !hints.length) return;
-		const points = initialPoints ?? hints.map(hint => hint.label.startsWith(hintPrefix) && hintPoint(hint.element));
+		const points = initialPoints ?? hints.map(({element, label, press}) =>
+			label.startsWith(hintPrefix) && hintPoint(element, press));
 		for (const [index, {node, label}] of hints.entries()) {
 			const hidden = !points[index];
 			if (node.hidden !== hidden) node.hidden = hidden;
@@ -210,9 +251,21 @@
 		});
 	}
 
-	function hintPoint(element) {
+	function hintPoint(element, press) {
 		if (scrollHints && element === document.scrollingElement) return {x: innerWidth / 2, y: 0};
-		return exposedPoint(element);
+		const point = exposedPoint(element, press);
+		if (!point?.blocked) return point;
+	}
+
+	function pressWrapper(element, {x, y}) {
+		// Include click for wrappers that only handle click, as with a real mouse press.
+		for (const type of ["mousedown", "mouseup", "click"]) {
+			if (!element.isConnected) break;
+			element.dispatchEvent(new MouseEvent(type, {
+				bubbles: true, cancelable: true, composed: true, view: window,
+				clientX: x, clientY: y, button: 0, buttons: type === "mousedown" ? 1 : 0, detail: 1
+			}));
+		}
 	}
 
 	function chooseHint(label) {
@@ -221,15 +274,22 @@
 		if (!remaining.length) {
 			clearHints();
 		} else if (remaining.length === 1 && remaining[0].label === label) {
-			const element = remaining[0].element;
+			const {element, press} = remaining[0];
 			clearHints();
-			if (!hintPoint(element)) return;
 			if (scrollHints) {
+				if (!hintPoint(element)) return;
 				scrollTarget = element;
 				showScrollOutline(element);
 			} else {
-				if (editable(element)) element.focus();
-				element.click();
+				const point = press ? hintPoint(element, true) :
+					exposedPoint(element, !element.matches(independentSelector));
+				if (!point || !clickable(element)) return;
+				if (press) {
+					pressWrapper(element, point);
+				} else {
+					if (editable(point.target)) point.target.focus();
+					point.target.click();
+				}
 			}
 		} else {
 			hintPrefix = label;
@@ -322,8 +382,16 @@
 	}
 
 	document.addEventListener("keydown", event => {
-		if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey ||
-			event.metaKey || event.composedPath().some(editable)) return;
+		if (event.defaultPrevented || event.isComposing || event.altKey || event.metaKey) return;
+
+		const key = event.key.toLowerCase();
+		if (event.ctrlKey) {
+			if (key !== "s" || event.shiftKey) return;
+			if (!event.repeat) showHints();
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			return;
+		}
 
 		if (hints.length) {
 			if (event.key === "Escape") {
@@ -341,7 +409,7 @@
 			return;
 		}
 
-		const key = event.key.toLowerCase();
+		if (event.composedPath().some(editable)) return;
 		if (key === "s") {
 			showHints();
 		} else if (/^[hjkl]$/.test(event.key) || (event.shiftKey && /^[jk]$/.test(key))) {

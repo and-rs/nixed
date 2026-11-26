@@ -241,11 +241,12 @@ function shadowPage() {
 				if (selector === "[inert], [aria-hidden='true']") {
 					return "inert" in attributes || attributes["aria-hidden"] === "true";
 				}
-				const action = localName === "button" || (localName === "a" && "href" in attributes) ||
-					("role" in attributes && selector.includes(`[role=${attributes.role}]`));
-				return action || (selector.includes("area[href]") &&
-					(["input", "textarea", "select"].includes(localName) ||
-						("tabindex" in attributes && attributes.tabindex !== "-1")));
+				const selectors = selector.split(",");
+				return selectors.includes(localName) ||
+					(selectors.includes(`${localName}[href]`) && "href" in attributes) ||
+					selectors.includes(`[role=${attributes.role}]`) ||
+					(selectors.includes("[tabindex]:not([tabindex='-1'])") &&
+						"tabindex" in attributes && attributes.tabindex !== "-1");
 			},
 			closest() { return null; },
 			hasAttribute(attribute) { return attribute in attributes; },
@@ -277,7 +278,14 @@ function shadowPage() {
 		PageNavigation: algorithms, document,
 		chrome: {runtime: {getURL: path => path}},
 		innerWidth: 1000, innerHeight: 1000,
-		getComputedStyle: node => ({visibility: "visible", display: "block", opacity: "1", ...node.style}),
+		getComputedStyle(node) {
+			let current = node;
+			while (current && !current.style.cursor) current = current.parentElement;
+			return {visibility: "visible", display: "block", opacity: "1",
+				cursor: current?.style.cursor ?? "auto", ...node.style};
+		},
+		window: {},
+		MouseEvent: class { constructor(type, options) { Object.assign(this, {type}, options); } },
 		addEventListener(type, callback) { listeners[type] = callback; },
 		performance: {now: () => now},
 		requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
@@ -334,6 +342,91 @@ test("click hints include roving-tabindex ARIA controls and their independent bu
 		page.element("div", {role, tabindex: "-1"}, role)
 	));
 	assert.deepEqual(page.targets(), ["chat", "overflow", ...roles]);
+});
+
+test("generic gridcell hints activate the hit descendant without clicking an independent button", () => {
+	const page = shadowPage();
+	const row = page.element("div", {role: "gridcell", tabindex: "0"}, "row");
+	const cell = page.element("div", {tabindex: "0", "aria-selected": "true"}, "cell");
+	const title = page.element("span", {}, "chat title");
+	const menu = page.element("button", {}, "row menu");
+	row.rect = cell.rect = title.rect = {
+		left: 20, right: 120, top: 20, bottom: 60, width: 100, height: 40
+	};
+	// The menu covers the first sample point but should only activate via its own hint.
+	menu.rect = {...row.rect, bottom: 30, height: 10};
+	cell.append(title, menu);
+	row.append(cell);
+	page.document.documentElement.append(row);
+	assert.deepEqual(page.targets(), ["chat title", "chat title", "row menu"]);
+});
+
+test("pointer boundary merges row hints, anchors them to the wrapper and sends one mouse sequence", () => {
+	const page = shadowPage();
+	const row = page.element("div", {role: "gridcell", tabindex: "0"}, "row");
+	const cell = page.element("div", {tabindex: "0"}, "cell");
+	const wrapper = page.element("div", {}, "pointer wrapper");
+	const title = page.element("span", {}, "title");
+	const menu = page.element("button", {}, "menu");
+	row.rect = cell.rect = {left: 20, right: 120, top: 20, bottom: 100, width: 100, height: 80};
+	wrapper.rect = title.rect = {...row.rect, top: 40, height: 60};
+	menu.rect = {...wrapper.rect, bottom: 50, height: 10};
+	wrapper.style.cursor = "pointer";
+	wrapper.append(title, menu);
+	cell.append(wrapper);
+	row.append(cell);
+	page.document.documentElement.append(row);
+
+	const events = [];
+	wrapper.dispatchEvent = event => events.push([
+		event.type, event.buttons, event.clientX, event.clientY, event.bubbles, event.detail
+	]);
+	page.key("s");
+	const hints = page.overlay.shadowRoot.querySelectorAll(".hint");
+	assert.deepEqual(hints.map(hint => [hint.textContent, hint.style.top]), [["A", "70px"], ["S", "41px"]]);
+	page.key("a");
+	assert.deepEqual(events, [
+		["mousedown", 1, 70, 70, true, 1],
+		["mouseup", 0, 70, 70, true, 1],
+		["click", 0, 70, 70, true, 1]
+	]);
+	let menuClicks = 0;
+	menu.click = () => menuClicks++;
+	page.key("s");
+	page.key("s");
+	assert.equal(menuClicks, 1);
+	assert.equal(events.length, 3);
+});
+
+test("Ctrl+S opens click hints from an editor and Escape cancels without blurring it", () => {
+	const page = shadowPage();
+	const editor = page.element("div", {contenteditable: "true"});
+	editor.closest = selector => selector.includes("[contenteditable") ? editor : null;
+	editor.blur = () => assert.fail("hint mode should not blur the editor");
+	page.document.documentElement.append(page.element("button"));
+	const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint");
+	const key = (value, properties) => page.key(value, "keydown", {
+		composedPath: () => [editor, {}, page.document],
+		...properties
+	});
+	assert.equal(key("s").prevented, undefined);
+	assert.equal(key("Escape").prevented, undefined);
+	assert.equal(key("s", {ctrlKey: true, isComposing: true}).prevented, undefined);
+	assert.equal(key("S", {ctrlKey: true, shiftKey: true}).prevented, undefined);
+	assert.equal(hints().length, 0);
+
+	assert.equal(key("s", {ctrlKey: true}).prevented, true);
+	const [hint] = hints();
+	assert.equal(hint.textContent, "A");
+	assert.equal(key("s", {ctrlKey: true, repeat: true}).prevented, true);
+	assert.equal(hints()[0], hint);
+	assert.equal(key("Escape").prevented, true);
+	assert.equal(hints().length, 0);
+	assert.equal(key("a").prevented, undefined);
+
+	key("s", {ctrlKey: true});
+	assert.equal(key("a").prevented, true);
+	assert.equal(hints().length, 0);
 });
 
 test("hint placement reuses discovery hits and batches viewport updates", () => {
