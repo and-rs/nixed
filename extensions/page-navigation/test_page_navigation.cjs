@@ -64,6 +64,10 @@ test("hint sessions keep stable targets and focus editable selections", () => {
 	assert.equal(original[0].style.top, "11px");
 	page.key("s");
 	assert.equal(original.filter(node => !node.hidden).length, 2);
+	assert.equal(page.key("Backspace").prevented, true);
+	assert.equal(original.filter(node => !node.hidden).length, 17);
+	assert.equal(clicked, undefined);
+	page.key("s");
 	targets[0].remove();
 	targets[15].rect = {...targets[15].getBoundingClientRect(), top: -100, bottom: -80};
 	root.append(...targets.slice(1).reverse());
@@ -171,6 +175,8 @@ function shadowPage({deferStylesheet = false} = {}) {
 			closest() { return null; },
 			hasAttribute(attribute) { return attribute in attributes; },
 			getAttribute(attribute) { return attributes[attribute] ?? null; },
+			setAttribute(attribute, value) { attributes[attribute] = value; },
+			removeAttribute(attribute) { delete attributes[attribute]; },
 			getBoundingClientRect() { return this.rect || {...rect, top: rect.top + offset, bottom: rect.bottom + offset}; },
 			attachShadow() {
 				return this.shadowRoot = container({host: this, elementFromPoint(x, y) { return hitAt(this, x, y); }});
@@ -650,15 +656,12 @@ test("scroll hints select without clicking, cancel without changing selection, a
 	page.document.documentElement.append(host);
 	const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint").map(hint => hint.textContent);
 	const outline = () => page.overlay.shadowRoot.querySelectorAll(".scroll-target");
-	const openScrollHints = properties => page.key("c", "keydown", {ctrlKey: true, ...properties});
-	const input = page.element("input");
-	input.closest = selector => selector.includes("input") ? input : null;
-	const focused = {composedPath: () => [input, page.document]};
+	const openScrollHints = () => page.key("c", "keydown", {ctrlKey: true});
 	assert.equal(page.key("C", "keydown", {shiftKey: true}).prevented, undefined);
 	assert.deepEqual(hints(), []);
-	assert.equal(openScrollHints(focused).prevented, true);
+	assert.equal(openScrollHints().prevented, true);
 	assert.deepEqual(hints(), ["A", "S"]);
-	page.key("s", "keydown", focused);
+	page.key("s");
 	assert.deepEqual(hints(), []);
 	assert.equal(outline().length, 1);
 	openScrollHints();
@@ -693,4 +696,62 @@ test("scroll hints select without clicking, cancel without changing selection, a
 	page.key("k");
 	page.advance(100);
 	assert.ok(page.movements.at(-1).top < 0);
+});
+
+test("Ctrl+C opens scroll hints and moves focus out of an editor without delaying scrolling", () => {
+	for (const useNestedTarget of [false, true]) {
+		const page = shadowPage();
+		const {document} = page;
+		const body = document.body = page.element("body");
+		document.documentElement.append(body);
+		const target = useNestedTarget ? page.element("div") : body;
+		const movements = useNestedTarget ? [] : page.movements;
+		const hints = () => page.overlay.shadowRoot.querySelectorAll(".hint");
+		if (useNestedTarget) {
+			target.style.overflowY = "auto";
+			target.scrollHeight = 1000;
+			target.clientHeight = 100;
+			target.scrollBy = options => movements.push(options);
+			body.append(target);
+			page.key("c", "keydown", {ctrlKey: true});
+			assert.equal(hints().length, 2);
+			page.key("s");
+		}
+		const input = page.element("input");
+		body.append(input);
+		input.closest = () => input;
+		document.activeElement = input;
+		let onBlur;
+		target.tabIndex = -1;
+		target.addEventListener = (type, callback, options) => {
+			assert.equal(type, "blur");
+			assert.equal(options.once, true);
+			onBlur = callback;
+		};
+		target.focus = options => {
+			assert.equal(target.getAttribute("tabindex"), "-1");
+			assert.equal(options.preventScroll, true);
+			document.activeElement = target;
+		};
+		const focused = {composedPath: () => [document.activeElement, document]};
+		assert.equal(page.key("c", "keydown", {ctrlKey: true, ...focused}).prevented, true);
+		assert.equal(document.activeElement, target);
+		assert.equal(hints().length, useNestedTarget ? 2 : 1);
+		assert.equal(page.key("j", "keydown", focused).prevented, true);
+		assert.equal(hints().length, 0);
+		page.advance(100);
+		assert.ok(movements.at(-1).top > 0);
+		document.activeElement = input;
+		onBlur();
+		assert.equal(target.hasAttribute("tabindex"), false);
+		assert.equal(page.key("j", "keydown", focused).prevented, undefined);
+
+		page.key("c", "keydown", {ctrlKey: true, ...focused});
+		// If the page takes focus back, selecting a hint moves it again.
+		document.activeElement = input;
+		onBlur();
+		page.key(useNestedTarget ? "s" : "a", "keydown", focused);
+		assert.equal(document.activeElement, target);
+		assert.equal(hints().length, 0);
+	}
 });

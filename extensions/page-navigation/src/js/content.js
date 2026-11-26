@@ -61,13 +61,12 @@
 	function visible(element, rect = element.getBoundingClientRect()) {
 		if (rect.width <= 0 || rect.height <= 0 || rect.bottom <= 0 || rect.right <= 0 ||
 			rect.top >= innerHeight || rect.left >= innerWidth) return false;
-		const style = getComputedStyle(element);
-		return style.visibility !== "hidden" &&
-			[...ancestors(element)].every(ancestor => {
-				const style = getComputedStyle(ancestor);
-				return style.display !== "none" && Number(style.opacity) > 0 &&
-					!ancestor.matches("[inert], [aria-hidden='true']");
-			});
+		return [...ancestors(element)].every(ancestor => {
+			const style = getComputedStyle(ancestor);
+			return (ancestor !== element || style.visibility !== "hidden") &&
+				style.display !== "none" && Number(style.opacity) > 0 &&
+				!ancestor.matches("[inert], [aria-hidden='true']");
+		});
 	}
 
 	function exposedPoint(element, activateDescendant = false, resolveWrapper) {
@@ -269,7 +268,7 @@
 		}
 	}
 
-	function chooseHint(label) {
+	function chooseHint(label, event) {
 		if (!stylesheetReady) return;
 		const remaining = hints.filter(hint => hint.label.startsWith(label));
 		if (!remaining.length) {
@@ -280,6 +279,8 @@
 			if (scrollHints) {
 				if (!hintPoint(element)) return;
 				scrollTarget = element;
+				const editor = event.composedPath().find(editable);
+				if (editor) focusScrollArea(editor);
 				showScrollOutline(element);
 			} else {
 				const point = press ? hintPoint(element, true) :
@@ -303,6 +304,31 @@
 		const style = getComputedStyle(element);
 		return (/(auto|scroll|overlay)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1) ||
 			(/(auto|scroll|overlay)/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 1);
+	}
+
+	function focusWithoutScrolling(target) {
+		if (!target.focus) return false;
+		const needsTabIndex = target.tabIndex < 0 && !target.hasAttribute("tabindex");
+		if (needsTabIndex) target.setAttribute("tabindex", "-1");
+		target.focus({preventScroll: true});
+		const focused = target.getRootNode().activeElement === target;
+		if (needsTabIndex) {
+			const restoreTabIndex = () => {
+				if (target.getAttribute("tabindex") === "-1") target.removeAttribute("tabindex");
+			};
+			if (focused) target.addEventListener("blur", restoreTabIndex, {once: true});
+			else restoreTabIndex();
+		}
+		return focused;
+	}
+
+	function focusScrollArea(editor) {
+		const modal = [...ancestors(editor)].find(element => element.matches(':modal, [aria-modal="true"]'));
+		if (scrollTarget?.isConnected && scrollTarget !== document.scrollingElement) {
+			const path = [...ancestors(scrollTarget)];
+			if ((!modal || path.includes(modal)) && !path.some(editable) && focusWithoutScrolling(scrollTarget)) return;
+		}
+		focusWithoutScrolling(modal || document.body || document.documentElement);
 	}
 
 	function scrollRect(element) {
@@ -379,21 +405,30 @@
 		if (event.defaultPrevented || event.isComposing || event.altKey || event.metaKey) return;
 
 		const key = event.key.toLowerCase();
+		const scrollKey = /^[hjkl]$/.test(event.key) || (event.shiftKey && /^[jk]$/.test(key));
 		if (event.ctrlKey) {
 			if ((key !== "s" && key !== "c") || event.shiftKey) return;
-			if (!event.repeat) showHints(key === "c");
 			event.preventDefault();
 			event.stopImmediatePropagation();
+			if (!event.repeat) {
+				const editor = key === "c" && event.composedPath().find(editable);
+				showHints(key === "c");
+				if (editor) focusScrollArea(editor);
+			}
 			return;
 		}
 
+		if (hints.length && scrollHints && scrollKey) clearOverlay();
 		if (hints.length) {
 			if (event.key === "Escape") {
 				clearOverlay();
 			} else if (event.key === "Backspace") {
-				chooseHint(hintPrefix.slice(0, -1));
+				if (hintPrefix) {
+					hintPrefix = hintPrefix.slice(0, -1);
+					positionHints();
+				}
 			} else if (event.key.length === 1 && alphabet.includes(event.key.toUpperCase())) {
-				if (!event.repeat) chooseHint(hintPrefix + event.key.toUpperCase());
+				if (!event.repeat) chooseHint(hintPrefix + event.key.toUpperCase(), event);
 			} else {
 				clearOverlay();
 				return;
@@ -406,7 +441,7 @@
 		if (event.composedPath().some(editable)) return;
 		if (key === "s") {
 			showHints();
-		} else if (/^[hjkl]$/.test(event.key) || (event.shiftKey && /^[jk]$/.test(key))) {
+		} else if (scrollKey) {
 			if (!event.repeat) scroll(key, event.shiftKey);
 		} else {
 			return;
